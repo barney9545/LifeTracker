@@ -3,6 +3,7 @@ app.py — Supplement Tracker, rebuilt with dark/lavender UI, mobile-first botto
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 from datetime import date, datetime
 from auth import is_logged_in, handle_magic_link_token, show_login_screen, logout
@@ -19,12 +20,19 @@ st.markdown("""
 <style>
 html,body,[data-testid="stAppViewContainer"],[data-testid="stMain"]{background-color:#0f0f14!important;color:#e8e6f0!important;}
 [data-testid="stHeader"]{background:#0f0f14!important;}
-.block-container{padding:1rem 1rem 5rem!important;max-width:480px!important;margin:auto;}
+.block-container{padding:1rem 1rem 6rem!important;max-width:480px!important;margin:auto;}
 h1{font-size:1.4rem!important;color:#e8e6f0!important;font-weight:500!important;}
 h2,h3{color:#e8e6f0!important;font-weight:500!important;}
 p,label,.stMarkdown{color:#e8e6f0!important;}
-.stButton>button{background:#6b5fa0!important;color:#fff!important;border:none!important;border-radius:10px!important;font-weight:500!important;}
-.stButton>button:hover{background:#7c6eb5!important;}
+
+/* Primary buttons — purple */
+[data-testid="baseButton-primary"]{background:#6b5fa0!important;color:#fff!important;border:none!important;border-radius:10px!important;font-weight:500!important;}
+[data-testid="baseButton-primary"]:hover{background:#7c6eb5!important;}
+
+/* Secondary buttons — muted, for inactive nav tabs and minor actions */
+[data-testid="baseButton-secondary"]{background:#1a1a24!important;color:#8b89a0!important;border:1px solid rgba(155,142,196,0.25)!important;border-radius:10px!important;font-weight:400!important;}
+[data-testid="baseButton-secondary"]:hover{background:#22222f!important;color:#c4b8f0!important;}
+
 input,textarea,[data-baseweb="input"] input,[data-baseweb="select"] div,[data-baseweb="textarea"] textarea{background:#1a1a24!important;color:#e8e6f0!important;border-color:rgba(155,142,196,0.3)!important;border-radius:8px!important;}
 [data-testid="stMetric"]{background:#1a1a24;border-radius:12px;border:0.5px solid rgba(155,142,196,0.2);padding:10px 12px!important;text-align:center;}
 [data-testid="stMetricLabel"]{color:#8b89a0!important;font-size:0.7rem!important;}
@@ -32,7 +40,6 @@ input,textarea,[data-baseweb="input"] input,[data-baseweb="select"] div,[data-ba
 [data-testid="stExpander"]{background:#1a1a24!important;border:0.5px solid rgba(155,142,196,0.2)!important;border-radius:12px!important;}
 [data-testid="stRadio"] label{color:#e8e6f0!important;}
 hr{border-color:rgba(155,142,196,0.15)!important;}
-.bottom-nav{position:fixed;bottom:0;left:0;right:0;background:#1a1a24;border-top:0.5px solid rgba(155,142,196,0.2);display:flex;z-index:999;}
 .supp-card{background:#1a1a24;border-radius:14px;border:0.5px solid rgba(155,142,196,0.2);padding:12px 14px;margin-bottom:8px;}
 .supp-card.due{border-left:3px solid #fbbf24;}
 .supp-card.done{border-left:3px solid #4ade80;opacity:0.65;}
@@ -40,6 +47,11 @@ hr{border-color:rgba(155,142,196,0.15)!important;}
 .ai-label{font-size:9px;color:#9b8ec4;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;margin-bottom:5px;}
 .bar-track{background:#22222f;border-radius:4px;height:7px;flex:1;overflow:hidden;}
 .section-lbl{font-size:10px;color:#8b89a0;text-transform:uppercase;letter-spacing:0.06em;font-weight:600;margin:12px 0 6px;}
+
+/* Hide Streamlit branding */
+[data-testid="stToolbar"]{display:none!important;}
+footer{visibility:hidden!important;}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -52,24 +64,70 @@ if "page" not in st.session_state:
     st.session_state.page = "today"
 if "editing_id" not in st.session_state:
     st.session_state.editing_id = None
+if "close_sidebar" not in st.session_state:
+    st.session_state.close_sidebar = False
 
 with st.sidebar:
     st.markdown("### Navigate")
-    if st.button("🏠 Today",  use_container_width=True): st.session_state.page="today";  st.rerun()
-    if st.button("💊 Manage", use_container_width=True): st.session_state.page="manage"; st.rerun()
-    if st.button("📊 Trends", use_container_width=True): st.session_state.page="trends"; st.rerun()
+    if st.button("🏠 Today",  use_container_width=True):
+        st.session_state.page = "today";  st.session_state.close_sidebar = True; st.rerun()
+    if st.button("💊 Manage", use_container_width=True):
+        st.session_state.page = "manage"; st.session_state.close_sidebar = True; st.rerun()
+    if st.button("📊 Trends", use_container_width=True):
+        st.session_state.page = "trends"; st.session_state.close_sidebar = True; st.rerun()
     st.markdown("---")
-    if st.button("🚪 Logout", use_container_width=True): logout(); st.rerun()
+    if st.button("🚪 Logout", use_container_width=True):
+        logout(); st.session_state.close_sidebar = True; st.rerun()
+
+if st.session_state.close_sidebar:
+    st.session_state.close_sidebar = False
+    components.html("""<script>
+        var btn = window.parent.document.querySelector('[data-testid="collapsedControl"]');
+        if (btn) btn.click();
+    </script>""", height=0)
+
 
 def nav_bar(active):
-    def cls(p): return "color:#c4b8f0;border-top:2px solid #9b8ec4;" if active==p else "color:#8b89a0;"
-    st.markdown(f"""
-    <div class="bottom-nav">
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px 10px;font-size:11px;{cls('today')}">🏠<br>Today</div>
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px 10px;font-size:11px;{cls('manage')}">💊<br>Manage</div>
-      <div style="flex:1;display:flex;flex-direction:column;align-items:center;padding:8px 4px 10px;font-size:11px;{cls('trends')}">📊<br>Trends</div>
-    </div>
-    """, unsafe_allow_html=True)
+    """Actual Streamlit buttons fixed to the bottom of the viewport via JS."""
+    c1, c2, c3 = st.columns(3)
+    items = [("🏠", "Today", "today"), ("💊", "Manage", "manage"), ("📊", "Trends", "trends")]
+    for col, (icon, label, page) in zip([c1, c2, c3], items):
+        with col:
+            if st.button(
+                f"{icon}  {label}",
+                key=f"nav_{page}",
+                use_container_width=True,
+                type="primary" if active == page else "secondary",
+            ):
+                st.session_state.page = page
+                st.rerun()
+
+    # JS: grab the last horizontal block (always our nav columns) and pin it to bottom
+    components.html("""<script>
+    (function() {
+        function fixNav() {
+            var doc = window.parent.document;
+            var blocks = doc.querySelectorAll('[data-testid="stHorizontalBlock"]');
+            if (!blocks.length) { setTimeout(fixNav, 100); return; }
+            var nav = blocks[blocks.length - 1];
+            var s = nav.style;
+            s.position   = 'fixed';
+            s.bottom     = '0';
+            s.left       = '0';
+            s.right      = '0';
+            s.width      = '100%';
+            s.maxWidth   = 'none';
+            s.background = '#1a1a24';
+            s.borderTop  = '0.5px solid rgba(155,142,196,0.2)';
+            s.zIndex     = '9999';
+            s.padding    = '6px 12px 10px';
+            s.boxSizing  = 'border-box';
+            s.margin     = '0';
+        }
+        setTimeout(fixNav, 150);
+    })();
+    </script>""", height=0)
+
 
 FREQ_DAYS  = {"Daily":1,"Every 2 Days":2,"Every 3 Days":3,"Weekly":7,"Twice Weekly":3,"Monthly":30}
 TIME_ORDER = {"Morning":0,"Afternoon":1,"Evening":2,"Anytime":3,"":4}
@@ -133,7 +191,6 @@ if st.session_state.page == "today":
             elif is_due(s["name"], s["frequency"], log_30): due_list.append(s)
             else: not_due_list.append(s)
 
-        # AI banner
         ai = get_ai_summary()
         if ai and ai.get("short"):
             st.markdown(f'<div class="ai-banner"><div class="ai-label">✨ AI insight</div>'
@@ -155,7 +212,7 @@ if st.session_state.page == "today":
                   <div style="display:flex;justify-content:space-between;align-items:flex-start;">
                     <div>
                       <div style="font-size:14px;font-weight:500;color:#e8e6f0;">{s['name']}</div>
-                      <div style="font-size:11px;color:#8b89a0;margin-top:2px;">{s['dosage']} {s['unit']} &nbsp;·&nbsp; {tod or s['frequency']} &nbsp;·&nbsp; {s.get('best_taken_with','')}</div>
+                      <div style="font-size:11px;color:#8b89a0;margin-top:2px;">{s['dosage']} {s['unit']} · {tod or s['frequency']} · {s.get('best_taken_with','')}</div>
                     </div>
                     <div style="font-size:11px;color:#c4b8f0;white-space:nowrap;">{streak_label(streak)}</div>
                   </div>
@@ -164,7 +221,7 @@ if st.session_state.page == "today":
                 with ct:
                     time_val = st.time_input("t", value=None, key=f"time_{s['id']}", label_visibility="collapsed")
                 with cb:
-                    if st.button("✅ Mark taken", key=f"take_{s['id']}", use_container_width=True):
+                    if st.button("✅ Mark taken", key=f"take_{s['id']}", use_container_width=True, type="primary"):
                         t_str = str(time_val) if time_val else datetime.now().strftime("%H:%M")
                         log_supplement(str(s["id"]), s["name"], taken=True, time_taken=t_str)
                         st.rerun()
@@ -203,7 +260,6 @@ elif st.session_state.page == "manage":
     paused_df = supplements[supplements["active"]==False] if not supplements.empty else pd.DataFrame()
     st.markdown(f"<div style='color:#8b89a0;font-size:12px;margin-bottom:12px;'>{len(active_df)} active · {len(paused_df)} paused</div>", unsafe_allow_html=True)
 
-    # Add form
     with st.expander("➕ Add supplement", expanded=False):
         with st.form("add_form", clear_on_submit=True):
             name = st.text_input("Name *")
@@ -226,7 +282,6 @@ elif st.session_state.page == "manage":
                     st.success(f"✅ {name} added!")
                     st.rerun()
 
-    # Edit form
     if st.session_state.editing_id and not supplements.empty:
         row = supplements[supplements["id"].astype(str)==str(st.session_state.editing_id)]
         if not row.empty:
@@ -252,32 +307,47 @@ elif st.session_state.page == "manage":
                         st.session_state.editing_id = None
                         st.rerun()
 
-    # Active list
     if not active_df.empty:
         st.markdown('<div class="section-lbl">Active</div>', unsafe_allow_html=True)
         for _, s in active_df.iterrows():
-            c1,c2,c3,c4 = st.columns([4,1,1,1])
-            with c1:
-                st.markdown(f"<div style='font-size:13px;font-weight:500;color:#e8e6f0;'>{s['name']}</div>"
-                            f"<div style='font-size:11px;color:#8b89a0;'>{s['dosage']} {s['unit']} · {s.get('time_of_day','')}</div>", unsafe_allow_html=True)
-            with c2:
-                if st.button("✏️", key=f"edit_{s['id']}"): st.session_state.editing_id=str(s["id"]); st.rerun()
-            with c3:
-                if st.button("⏸", key=f"pause_{s['id']}"): update_supplement_active(str(s["id"]),False); st.rerun()
-            with c4:
-                if st.button("🗑️", key=f"del_{s['id']}"): delete_supplement(str(s["id"])); st.rerun()
+            # Info column + 3 action buttons side by side
+            col_info, col_actions = st.columns([4, 3])
+            with col_info:
+                st.markdown(
+                    f"<div style='font-size:13px;font-weight:500;color:#e8e6f0;padding-top:4px;'>{s['name']}</div>"
+                    f"<div style='font-size:11px;color:#8b89a0;'>{s['dosage']} {s['unit']} · {s.get('time_of_day','')}</div>",
+                    unsafe_allow_html=True
+                )
+            with col_actions:
+                b1, b2, b3 = st.columns(3)
+                with b1:
+                    if st.button("✏️", key=f"edit_{s['id']}", use_container_width=True):
+                        st.session_state.editing_id = str(s["id"]); st.rerun()
+                with b2:
+                    if st.button("⏸", key=f"pause_{s['id']}", use_container_width=True):
+                        update_supplement_active(str(s["id"]), False); st.rerun()
+                with b3:
+                    if st.button("🗑️", key=f"del_{s['id']}", use_container_width=True):
+                        delete_supplement(str(s["id"])); st.rerun()
             st.divider()
 
     if not paused_df.empty:
         with st.expander(f"⏸ Paused ({len(paused_df)})"):
             for _, s in paused_df.iterrows():
-                c1,c2,c3 = st.columns([5,1,1])
-                with c1:
-                    st.markdown(f"<div style='font-size:13px;color:#8b89a0;'>{s['name']} · {s['dosage']} {s['unit']}</div>", unsafe_allow_html=True)
-                with c2:
-                    if st.button("▶️", key=f"res_{s['id']}"): update_supplement_active(str(s["id"]),True); st.rerun()
-                with c3:
-                    if st.button("🗑️", key=f"delp_{s['id']}"): delete_supplement(str(s["id"])); st.rerun()
+                col_info, col_actions = st.columns([4, 2])
+                with col_info:
+                    st.markdown(
+                        f"<div style='font-size:13px;color:#8b89a0;padding-top:4px;'>{s['name']} · {s['dosage']} {s['unit']}</div>",
+                        unsafe_allow_html=True
+                    )
+                with col_actions:
+                    b1, b2 = st.columns(2)
+                    with b1:
+                        if st.button("▶️", key=f"res_{s['id']}", use_container_width=True):
+                            update_supplement_active(str(s["id"]), True); st.rerun()
+                    with b2:
+                        if st.button("🗑️", key=f"delp_{s['id']}", use_container_width=True):
+                            delete_supplement(str(s["id"])); st.rerun()
 
     nav_bar("manage")
 
@@ -299,7 +369,6 @@ elif st.session_state.page == "trends":
         active_names = active_supp["name"].tolist()
         freq_map     = dict(zip(active_supp["name"], active_supp["frequency"]))
 
-        # Compliance bars
         st.markdown("#### 30-day compliance")
         compliance = []
         for name in active_names:
@@ -321,7 +390,6 @@ elif st.session_state.page == "trends":
 
         st.markdown("<div style='font-size:10px;color:#8b89a0;margin-bottom:12px;'>🟢 85%+  🟣 60-84%  🟡 40-59%  🔴 below 40%</div>", unsafe_allow_html=True)
 
-        # Streaks
         st.markdown("#### Streaks")
         streaks = sorted(
             [(n, compute_streak(n, log, freq_map.get(n,"Daily"))) for n in active_names],
@@ -337,7 +405,6 @@ elif st.session_state.page == "trends":
               <span style="font-size:12px;color:{color};">{lbl}</span>
             </div>""", unsafe_allow_html=True)
 
-        # AI summary
         st.markdown("#### AI summary")
         ai = get_ai_summary()
         if ai and ai.get("long"):
