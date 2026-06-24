@@ -4,9 +4,13 @@ app.py — Supplement Tracker, rebuilt with dark/lavender UI, mobile-first botto
 
 import streamlit as st
 import streamlit.components.v1 as components
+import extra_streamlit_components as stx
 import pandas as pd
 from datetime import date, datetime
-from auth import is_logged_in, handle_magic_link_token, show_login_screen, logout
+from auth import (
+    is_logged_in, handle_magic_link_token, show_login_screen, logout,
+    attach_cookie_manager,
+)
 from sheets import (
     get_supplements, get_log, log_supplement, already_logged_today,
     add_supplement, update_supplement_active, delete_supplement,
@@ -52,8 +56,19 @@ hr{border-color:rgba(155,142,196,0.15)!important;}
 [data-testid="stToolbar"]{display:none!important;}
 footer{visibility:hidden!important;}
 
+/* Keep columns side-by-side on mobile (Streamlit stacks them by default <640px).
+   This makes the bottom nav, Manage action buttons, and metric cards stay inline. */
+[data-testid="stHorizontalBlock"]{flex-wrap:nowrap!important;gap:0.4rem!important;}
+[data-testid="column"]{min-width:0!important;}
+[data-testid="column"] [data-testid="baseButton-secondary"],
+[data-testid="column"] [data-testid="baseButton-primary"]{padding-left:0!important;padding-right:0!important;}
+
 </style>
 """, unsafe_allow_html=True)
+
+# Build exactly ONE CookieManager per run and share it with auth.py.
+# (Constructing it more than once per run raises DuplicateWidgetID.)
+attach_cookie_manager(stx.CookieManager(key="supp_cookie_mgr"))
 
 handle_magic_link_token()
 if not is_logged_in():
@@ -77,7 +92,7 @@ with st.sidebar:
         st.session_state.page = "trends"; st.session_state.close_sidebar = True; st.rerun()
     st.markdown("---")
     if st.button("🚪 Logout", use_container_width=True):
-        logout(); st.session_state.close_sidebar = True; st.rerun()
+        logout()  # clears the cookie and reloads the page via JS
 
 if st.session_state.close_sidebar:
     st.session_state.close_sidebar = False
@@ -143,6 +158,7 @@ def is_due(name, frequency, log_df):
     return (date.today()-last).days >= FREQ_DAYS.get(frequency,1)
 
 def compute_streak(name, log_df, frequency):
+    if log_df.empty or "supplement_name" not in log_df.columns: return 0
     taken = log_df[(log_df["supplement_name"]==name)&(log_df["taken"]==True)]
     if taken.empty: return 0
     interval = FREQ_DAYS.get(frequency,1)
