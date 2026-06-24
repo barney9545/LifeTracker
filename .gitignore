@@ -1,0 +1,13 @@
+# ⚠️ Credentials — never commit these
+.streamlit/secrets.toml
+*.json
+
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+.venv/
+
+# Apps Script (lives in Google, not GitHub)
+digest.gs
