@@ -8,7 +8,6 @@ import streamlit as st
 from google.oauth2.service_account import Credentials
 import pandas as pd
 from datetime import date, datetime
-import uuid
 
 SCOPES   = ["https://www.googleapis.com/auth/spreadsheets"]
 SHEET_ID = "1Q0E7ByJMQpSmGj9CJ3f5bSHbbcxExxp-PH_3GobpkrU"
@@ -248,27 +247,3 @@ def save_ai_summary(short: str, long: str):
     st.session_state._ai_summary = {
         "short": short, "long": long, "updated_at": now,
     }
-
-
-# ── Auth tokens ───────────────────────────────────────────────────────────────
-
-def create_auth_token() -> str:
-    token   = str(uuid.uuid4())
-    now     = datetime.utcnow()
-    expires = now + pd.Timedelta(minutes=10)
-    get_sheet().worksheet("auth_tokens").append_row([
-        token, now.isoformat(), expires.isoformat(), "FALSE"
-    ], value_input_option="RAW")
-    return token
-
-
-def validate_and_consume_token(token: str) -> bool:
-    ws      = get_sheet().worksheet("auth_tokens")
-    records = ws.get_all_records()
-    for i, row in enumerate(records, start=2):
-        if row["token"] == token and str(row["used"]).upper() == "FALSE":
-            expires = datetime.fromisoformat(row["expires_at"])
-            if datetime.utcnow() <= expires:
-                ws.update_cell(i, 4, "TRUE")
-                return True
-    return False

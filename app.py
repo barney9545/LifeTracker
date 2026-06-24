@@ -4,13 +4,9 @@ app.py — Supplement Tracker, rebuilt with dark/lavender UI, mobile-first botto
 
 import streamlit as st
 import streamlit.components.v1 as components
-import extra_streamlit_components as stx
 import pandas as pd
 from datetime import date, datetime
-from auth import (
-    is_logged_in, handle_magic_link_token, show_login_screen, logout,
-    attach_cookie_manager,
-)
+from auth import require_login
 from sheets import (
     get_supplements, get_log, log_supplement, already_logged_today,
     add_supplement, update_supplement_active, delete_supplement,
@@ -66,14 +62,9 @@ footer{visibility:hidden!important;}
 </style>
 """, unsafe_allow_html=True)
 
-# Build exactly ONE CookieManager per run and share it with auth.py.
-# (Constructing it more than once per run raises DuplicateWidgetID.)
-attach_cookie_manager(stx.CookieManager(key="supp_cookie_mgr"))
-
-handle_magic_link_token()
-if not is_logged_in():
-    show_login_screen()
-    st.stop()
+# Gate the app on native Google SSO (single allowed account). Stops here if
+# the visitor isn't signed in as the authorised user.
+require_login()
 
 if "page" not in st.session_state:
     st.session_state.page = "today"
@@ -92,7 +83,7 @@ with st.sidebar:
         st.session_state.page = "trends"; st.session_state.close_sidebar = True; st.rerun()
     st.markdown("---")
     if st.button("🚪 Logout", use_container_width=True):
-        logout()  # clears the cookie and reloads the page via JS
+        st.logout()
 
 if st.session_state.close_sidebar:
     st.session_state.close_sidebar = False
