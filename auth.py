@@ -1,49 +1,65 @@
 """
 auth.py — session management and magic link authentication.
+Session is stored in a browser cookie so it survives tab closes and refreshes.
 """
 
 import streamlit as st
-from datetime import datetime, timedelta
+import extra_streamlit_components as stx
+from datetime import datetime, timedelta, timezone
 from sheets import create_auth_token, validate_and_consume_token
 from telegram_bot import send_magic_link
 
-SESSION_DURATION_DAYS = 30
+SESSION_DURATION_DAYS = 30  # ← adjust this to change how long login lasts
+COOKIE_KEY = "supp_auth"
+
+
+def _cm():
+    return stx.CookieManager()
 
 
 def is_logged_in() -> bool:
-    """Check if the current session is authenticated."""
-    if "authenticated" not in st.session_state:
-        st.session_state.authenticated = False
-    if "auth_expires" not in st.session_state:
-        return False
-    if datetime.utcnow() > st.session_state.auth_expires:
-        st.session_state.authenticated = False
-        return False
-    return st.session_state.authenticated
+    # Fast path: already verified this rerun
+    if st.session_state.get("authenticated") and st.session_state.get("auth_expires"):
+        if datetime.now(timezone.utc) <= st.session_state["auth_expires"]:
+            return True
+
+    # Slow path: check the browser cookie (survives tab close / refresh)
+    try:
+        val = _cm().get(COOKIE_KEY)
+        if val:
+            expires = datetime.fromisoformat(val)
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) <= expires:
+                st.session_state["authenticated"] = True
+                st.session_state["auth_expires"] = expires
+                return True
+    except Exception:
+        pass
+
+    st.session_state["authenticated"] = False
+    return False
 
 
 def login():
-    """Mark the session as authenticated for SESSION_DURATION_DAYS."""
-    st.session_state.authenticated = True
-    st.session_state.auth_expires = datetime.utcnow() + timedelta(days=SESSION_DURATION_DAYS)
+    expires = datetime.now(timezone.utc) + timedelta(days=SESSION_DURATION_DAYS)
+    st.session_state["authenticated"] = True
+    st.session_state["auth_expires"] = expires
+    _cm().set(COOKIE_KEY, expires.isoformat(), expires=expires)
 
 
 def logout():
-    st.session_state.authenticated = False
+    st.session_state["authenticated"] = False
     st.session_state.pop("auth_expires", None)
+    _cm().delete(COOKIE_KEY)
 
 
 def handle_magic_link_token():
-    """
-    Called on every page load. If ?token=xxx is in the URL,
-    validate it and log the user in.
-    """
     params = st.query_params
     token = params.get("token", None)
     if token and not is_logged_in():
         if validate_and_consume_token(token):
             login()
-            # Clean the token from the URL so it can't be replayed
             st.query_params.clear()
             st.rerun()
         else:
@@ -52,7 +68,6 @@ def handle_magic_link_token():
 
 
 def show_login_screen():
-    """Render the login page."""
     st.markdown("""
         <div style='text-align:center; padding: 60px 20px;'>
             <h1>💊 Supplement Tracker</h1>
