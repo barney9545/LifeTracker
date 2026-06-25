@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  background: var(--c-bg, #0d0a14);
+  color: var(--c-text, #efecf8);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Palette: Lavender ─────────────────────────────────────── */
+.theme-lavender {
+  --c-bg: #0d0a14;
+  --c-bg-glow: radial-gradient(120% 70% at 50% -10%, #1d1430 0%, #0d0a14 55%);
+  --c-surface: #171022;
+  --c-surface-2: #1e1630;
+  --c-border: rgba(167, 139, 250, 0.16);
+  --c-text: #efecf8;
+  --c-muted: #9b93b5;
+  --c-accent: #a78bfa;
+  --c-accent-strong: #8b5cf6;
+  --c-accent-ink: #ffffff;
+  --c-accent-soft: rgba(139, 92, 246, 0.16);
+  --c-due: #fbbf24;
+  --c-done: #4ade80;
+}
+
+/* ── Palette: Green ────────────────────────────────────────── */
+.theme-green {
+  --c-bg: #07120d;
+  --c-bg-glow: radial-gradient(120% 70% at 50% -10%, #0d2a1d 0%, #07120d 55%);
+  --c-surface: #0f1f17;
+  --c-surface-2: #142a1f;
+  --c-border: rgba(52, 211, 153, 0.16);
+  --c-text: #e8f5ee;
+  --c-muted: #8aa89a;
+  --c-accent: #34d399;
+  --c-accent-strong: #10b981;
+  --c-accent-ink: #04130c;
+  --c-accent-soft: rgba(16, 185, 129, 0.15);
+  --c-due: #fbbf24;
+  --c-done: #4ade80;
+}
+
+.app-shell {
+  background: var(--c-bg-glow);
+  min-height: 100dvh;
+}

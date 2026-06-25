@@ -1,6 +1,10 @@
 # ⚠️ Credentials — never commit these
 .streamlit/secrets.toml
-*.json
+# Service-account keys etc. at the repo root (scoped to root so it doesn't
+# swallow the web app's package.json / tsconfig.json).
+/*.json
+**/service-account*.json
+**/*-key.json
 
 # Python
 __pycache__/

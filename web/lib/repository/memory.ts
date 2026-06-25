@@ -1,0 +1,76 @@
+/**
+ * MemoryRepository — in-memory implementation of TrackerRepository.
+ * Used as a dev/CI fallback when no Google credentials are present, and as
+ * proof that the UI/logic are not coupled to Sheets (verification step).
+ */
+import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
+import { todayISO } from "../core/logic";
+import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
+
+function seedItems(): TrackableItem[] {
+  return [
+    { id: "1", name: "Vitamin D3", active: true, frequency: "Daily", timeOfDay: "Morning", notes: "", meta: { category: "Vitamin", dosage: "60000", unit: "IU", best_taken_with: "With food", times_per_day: "1" } },
+    { id: "2", name: "Omega-3", active: true, frequency: "Daily", timeOfDay: "Morning", notes: "", meta: { category: "Supplement", dosage: "1000", unit: "mg", best_taken_with: "With food", times_per_day: "1" } },
+    { id: "3", name: "Magnesium", active: true, frequency: "Daily", timeOfDay: "Evening", notes: "", meta: { category: "Mineral", dosage: "400", unit: "mg", best_taken_with: "With food", times_per_day: "1" } },
+    { id: "4", name: "Zinc", active: true, frequency: "Daily", timeOfDay: "Evening", notes: "", meta: { category: "Mineral", dosage: "25", unit: "mg", best_taken_with: "Anytime", times_per_day: "1" } },
+    { id: "5", name: "Creatine", active: false, frequency: "Daily", timeOfDay: "Anytime", notes: "", meta: { category: "Performance", dosage: "5", unit: "g", best_taken_with: "Anytime", times_per_day: "1" } },
+  ];
+}
+
+function seedLogs(): LogEntry[] {
+  const logs: LogEntry[] = [];
+  let id = 1;
+  for (let d = 0; d < 14; d++) {
+    const date = todayISO(new Date(Date.now() - d * 86_400_000));
+    for (const [itemId, itemName] of [["1", "Vitamin D3"], ["2", "Omega-3"]] as const) {
+      logs.push({ id: String(id++), itemId, itemName, date, done: true, time: "08:30", notes: "" });
+    }
+    if (d % 2 === 0) logs.push({ id: String(id++), itemId: "3", itemName: "Magnesium", date, done: true, time: "21:00", notes: "" });
+  }
+  return logs;
+}
+
+export class MemoryRepository implements TrackerRepository {
+  private items = seedItems();
+  private logs = seedLogs();
+  private summary: AiSummary = {
+    short: "You're at a strong streak on Vitamin D3 — nice consistency. Magnesium pairs well with dinner tonight.",
+    long: "Over the last 30 days your morning stack is rock solid (Vitamin D3 and Omega-3 near 100%). Magnesium is more hit-or-miss in the evenings — anchoring it to dinner could lift it above 80%. Keep the momentum going.",
+    updatedAt: "25 Jun, 08:00",
+  };
+
+  async getItems() { return structuredClone(this.items); }
+  async getLogs(days: number) {
+    const cutoff = todayISO(new Date(Date.now() - days * 86_400_000));
+    return this.logs.filter((l) => l.date >= cutoff).map((l) => ({ ...l }));
+  }
+  async getAiSummary() { return { ...this.summary }; }
+
+  async addItem(item: NewItem) {
+    const id = String(Math.max(0, ...this.items.map((i) => Number(i.id) || 0)) + 1);
+    const created = { ...item, id };
+    this.items.push(created);
+    return created;
+  }
+  async updateItem(id: string, patch: ItemPatch) {
+    const it = this.items.find((i) => i.id === id);
+    if (!it) return;
+    Object.assign(it, { ...patch, meta: { ...it.meta, ...(patch.meta ?? {}) } });
+  }
+  async setActive(id: string, active: boolean) {
+    const it = this.items.find((i) => i.id === id);
+    if (it) it.active = active;
+  }
+  async deleteItem(id: string) {
+    this.items = this.items.filter((i) => i.id !== id);
+  }
+  async log(entry: NewLog) {
+    const id = String(Math.max(0, ...this.logs.map((l) => Number(l.id) || 0)) + 1);
+    const created: LogEntry = {
+      id, itemId: entry.itemId, itemName: entry.itemName, date: todayISO(),
+      done: entry.done, time: entry.time ?? "", notes: entry.notes ?? "",
+    };
+    this.logs.push(created);
+    return created;
+  }
+}
