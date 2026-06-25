@@ -15,3 +15,7 @@ venv/
 
 # Apps Script (lives in Google, not GitHub)
 digest.gs
+
+# Local-only secret scratch (Vercel env paste file)
+VERCEL_ENV.local.txt
+*.local.txt
