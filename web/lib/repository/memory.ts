@@ -82,4 +82,7 @@ export class MemoryRepository implements TrackerRepository {
     this.logs.push(created);
     return created;
   }
+  async deleteLog(logId: string) {
+    this.logs = this.logs.filter((l) => l.id !== logId);
+  }
 }

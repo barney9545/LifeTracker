@@ -29,9 +29,16 @@ function revalidateAll() {
   revalidatePath("/trends");
 }
 
-export async function markDone(itemId: string, itemName: string, time?: string) {
+export async function markDone(itemId: string, itemName: string, time?: string): Promise<string> {
   await guard();
-  await getRepository().log({ itemId, itemName, done: true, time: time || nowHHMM() });
+  const entry = await getRepository().log({ itemId, itemName, done: true, time: time || nowHHMM() });
+  revalidateAll();
+  return entry.id; // returned so the UI can offer an instant undo
+}
+
+export async function undoDone(logId: string) {
+  await guard();
+  await getRepository().deleteLog(logId);
   revalidateAll();
 }
 

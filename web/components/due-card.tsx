@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { markDone } from "@/actions/items";
+import { markDone, undoDone } from "@/actions/items";
 import { CheckCircle } from "./ui";
 
 export default function DueCard({
@@ -14,16 +14,33 @@ export default function DueCard({
   dotColor: string;
 }) {
   const [done, setDone] = useState(false);
+  const [logId, setLogId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function handle() {
+  function handleDone() {
     if (done || pending) return;
     setDone(true); // optimistic
     startTransition(async () => {
       try {
-        await markDone(id, name);
+        setLogId(await markDone(id, name));
       } catch {
         setDone(false); // revert on failure
+        setLogId(null);
+      }
+    });
+  }
+
+  function handleUndo() {
+    if (pending) return;
+    const prev = logId;
+    setDone(false); // optimistic revert
+    setLogId(null);
+    startTransition(async () => {
+      try {
+        if (prev) await undoDone(prev);
+      } catch {
+        setDone(true); // restore on failure
+        setLogId(prev);
       }
     });
   }
@@ -40,11 +57,19 @@ export default function DueCard({
         </div>
         <p className="mt-0.5 truncate text-[12px] text-[var(--c-muted)]">{detail}</p>
       </div>
-      <button onClick={handle} disabled={done || pending}
-        aria-label={`Mark ${name} done`}
-        className="shrink-0 transition active:scale-90">
-        <CheckCircle filled={done} />
-      </button>
+      {done ? (
+        <button onClick={handleUndo} disabled={pending}
+          aria-label={`Undo ${name}`}
+          className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium text-[var(--c-accent)] transition active:scale-90">
+          Undo
+        </button>
+      ) : (
+        <button onClick={handleDone} disabled={pending}
+          aria-label={`Mark ${name} done`}
+          className="shrink-0 transition active:scale-90">
+          <CheckCircle filled={false} />
+        </button>
+      )}
     </div>
   );
 }

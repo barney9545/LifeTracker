@@ -227,4 +227,11 @@ export class SheetsRepository implements TrackerRepository {
       notes: entry.notes ?? "",
     };
   }
+
+  async deleteLog(logId: string): Promise<void> {
+    const sheet = await this.tab("log");
+    const rows = await sheet.getRows();
+    const row = rows.find((r) => String(r.get("id")) === String(logId));
+    if (row) await row.delete();
+  }
 }
