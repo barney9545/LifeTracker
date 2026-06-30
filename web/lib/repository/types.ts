@@ -8,8 +8,9 @@
  */
 import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
 
-export type NewItem = Omit<TrackableItem, "id">;
-export type ItemPatch = Partial<Omit<TrackableItem, "id">>;
+// `addedDate` is stamped by the repository on insert, so callers don't supply it.
+export type NewItem = Omit<TrackableItem, "id" | "addedDate">;
+export type ItemPatch = Partial<Omit<TrackableItem, "id" | "addedDate">>;
 
 export interface NewLog {
   itemId: string;

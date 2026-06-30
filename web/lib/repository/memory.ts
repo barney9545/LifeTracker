@@ -7,25 +7,32 @@ import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
 import { todayISO } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
 
+function daysAgoISO(n: number): string {
+  return todayISO(new Date(Date.now() - n * 86_400_000));
+}
+
 function seedItems(): TrackableItem[] {
   return [
-    { id: "1", name: "Vitamin D3", active: true, frequency: "Daily", timeOfDay: "Morning", notes: "", meta: { category: "Vitamin", dosage: "60000", unit: "IU", best_taken_with: "With food", times_per_day: "1" } },
-    { id: "2", name: "Omega-3", active: true, frequency: "Daily", timeOfDay: "Morning", notes: "", meta: { category: "Supplement", dosage: "1000", unit: "mg", best_taken_with: "With food", times_per_day: "1" } },
-    { id: "3", name: "Magnesium", active: true, frequency: "Daily", timeOfDay: "Evening", notes: "", meta: { category: "Mineral", dosage: "400", unit: "mg", best_taken_with: "With food", times_per_day: "1" } },
-    { id: "4", name: "Zinc", active: true, frequency: "Daily", timeOfDay: "Evening", notes: "", meta: { category: "Mineral", dosage: "25", unit: "mg", best_taken_with: "Anytime", times_per_day: "1" } },
-    { id: "5", name: "Creatine", active: false, frequency: "Daily", timeOfDay: "Anytime", notes: "", meta: { category: "Performance", dosage: "5", unit: "g", best_taken_with: "Anytime", times_per_day: "1" } },
+    { id: "1", name: "Vitamin D3", active: true, frequency: "Daily", timeOfDay: "Morning", notes: "", addedDate: daysAgoISO(20), meta: { category: "Vitamin", dosage: "60000", unit: "IU", best_taken_with: "With food", times_per_day: "1" } },
+    { id: "2", name: "Omega-3", active: true, frequency: "Daily", timeOfDay: "Morning", notes: "", addedDate: daysAgoISO(20), meta: { category: "Supplement", dosage: "1000", unit: "mg", best_taken_with: "With food", times_per_day: "1" } },
+    { id: "3", name: "Magnesium", active: true, frequency: "Daily", timeOfDay: "Evening", notes: "", addedDate: daysAgoISO(20), meta: { category: "Mineral", dosage: "400", unit: "mg", best_taken_with: "With food", times_per_day: "1" } },
+    { id: "4", name: "Zinc", active: true, frequency: "Daily", timeOfDay: "Evening", notes: "", addedDate: daysAgoISO(10), meta: { category: "Mineral", dosage: "25", unit: "mg", best_taken_with: "Anytime", times_per_day: "1" } },
+    { id: "5", name: "Creatine", active: false, frequency: "Daily", timeOfDay: "Anytime", notes: "", addedDate: daysAgoISO(40), meta: { category: "Performance", dosage: "5", unit: "g", best_taken_with: "Anytime", times_per_day: "1" } },
   ];
 }
 
 function seedLogs(): LogEntry[] {
   const logs: LogEntry[] = [];
   let id = 1;
-  for (let d = 0; d < 14; d++) {
-    const date = todayISO(new Date(Date.now() - d * 86_400_000));
-    for (const [itemId, itemName] of [["1", "Vitamin D3"], ["2", "Omega-3"]] as const) {
-      logs.push({ id: String(id++), itemId, itemName, date, done: true, time: "08:30", notes: "" });
-    }
+  for (let d = 0; d < 20; d++) {
+    const date = daysAgoISO(d);
+    // Vitamin D3 — taken through today (strong)
+    logs.push({ id: String(id++), itemId: "1", itemName: "Vitamin D3", date, done: true, time: "08:30", notes: "" });
+    // Omega-3 — stopped 4 days ago (a gap, like the user's case)
+    if (d >= 4) logs.push({ id: String(id++), itemId: "2", itemName: "Omega-3", date, done: true, time: "08:30", notes: "" });
+    // Magnesium — every other day
     if (d % 2 === 0) logs.push({ id: String(id++), itemId: "3", itemName: "Magnesium", date, done: true, time: "21:00", notes: "" });
+    // Zinc (id 4) — never taken
   }
   return logs;
 }
@@ -48,7 +55,7 @@ export class MemoryRepository implements TrackerRepository {
 
   async addItem(item: NewItem) {
     const id = String(Math.max(0, ...this.items.map((i) => Number(i.id) || 0)) + 1);
-    const created = { ...item, id };
+    const created: TrackableItem = { ...item, id, addedDate: todayISO() };
     this.items.push(created);
     return created;
   }
@@ -59,7 +66,9 @@ export class MemoryRepository implements TrackerRepository {
   }
   async setActive(id: string, active: boolean) {
     const it = this.items.find((i) => i.id === id);
-    if (it) it.active = active;
+    if (!it) return;
+    it.active = active;
+    if (active && !it.addedDate) it.addedDate = todayISO();
   }
   async deleteItem(id: string) {
     this.items = this.items.filter((i) => i.id !== id);

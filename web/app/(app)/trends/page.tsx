@@ -1,5 +1,5 @@
 import { getRepository } from "@/lib/repository";
-import { compliance, complianceColor, computeStreak, streakLabel } from "@/lib/core/logic";
+import { complianceColor, complianceDays, computeStreak, streakLabel } from "@/lib/core/logic";
 import { signOut } from "@/lib/auth";
 import { SectionLabel } from "@/components/ui";
 
@@ -13,7 +13,7 @@ export default async function TrendsPage() {
   const active = items.filter((i) => i.active);
 
   const comp = active
-    .map((i) => ({ name: i.name, ...compliance(i.name, logs) }))
+    .map((i) => ({ name: i.name, ...complianceDays(i, logs) }))
     .sort((a, b) => b.pct - a.pct);
   const streaks = active
     .map((i) => ({ name: i.name, n: computeStreak(i.name, logs, i.frequency) }))
@@ -37,14 +37,23 @@ export default async function TrendsPage() {
           <div className="flex flex-col gap-2.5 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
             {comp.map((c) => (
               <div key={c.name} className="flex items-center gap-3">
-                <span className="w-[88px] shrink-0 truncate text-right text-[12px] text-[var(--c-text)]">{c.name}</span>
+                <div className="w-[96px] shrink-0 text-right">
+                  <div className="truncate text-[12px] text-[var(--c-text)]">{c.name}</div>
+                  {c.daysSince === null ? (
+                    <div className="text-[10px] text-[#f87171]">never taken</div>
+                  ) : c.daysSince >= 2 ? (
+                    <div className="text-[10px] text-[#f87171]">{c.daysSince}d ago</div>
+                  ) : (
+                    <div className="text-[10px] text-[var(--c-muted)]">{c.takenDays}/{c.expectedDays}d</div>
+                  )}
+                </div>
                 <div className="h-2 flex-1 overflow-hidden rounded-full bg-[var(--c-surface-2)]">
                   <div className="h-full rounded-full" style={{ width: `${c.pct}%`, background: complianceColor(c.pct) }} />
                 </div>
                 <span className="w-[40px] shrink-0 text-right text-[11px] text-[var(--c-muted)]">{c.pct}%</span>
               </div>
             ))}
-            <p className="mt-1 text-[10px] text-[var(--c-muted)]">🟢 85%+  🟣 60–84%  🟡 40–59%  🔴 below 40%</p>
+            <p className="mt-1 text-[10px] text-[var(--c-muted)]">🟢 85%+  🟣 60–84%  🟡 40–59%  🔴 below 40% · since added</p>
           </div>
 
           <SectionLabel>Streaks</SectionLabel>

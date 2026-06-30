@@ -20,6 +20,9 @@ export interface TrackableItem {
   frequency: Frequency;
   timeOfDay: TimeOfDay;
   notes: string;
+  /** ISO date the item was added; used as the start of the compliance window.
+   *  May be "" for legacy rows — callers fall back to the earliest log date. */
+  addedDate: string;
   /** Tracker-specific fields, e.g. supplements: dosage, unit, category, bestTakenWith. */
   meta: Record<string, string>;
 }

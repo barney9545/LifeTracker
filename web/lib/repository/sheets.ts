@@ -51,6 +51,7 @@ function rowToItem(r: GoogleSpreadsheetRow): TrackableItem {
     frequency: (String(r.get("frequency") ?? "Daily") || "Daily") as Frequency,
     timeOfDay: (String(r.get("time_of_day") ?? "Anytime") || "Anytime") as TimeOfDay,
     notes: String(r.get("notes") ?? ""),
+    addedDate: String(r.get("added_date") ?? ""),
     meta: {
       category: String(r.get("category") ?? ""),
       dosage: String(r.get("dosage") ?? ""),
@@ -100,6 +101,22 @@ export class SheetsRepository implements TrackerRepository {
     return sheet;
   }
 
+  /** Add a header column to a sheet if it's not already present (one-time). */
+  private async ensureColumn(
+    sheet: Awaited<ReturnType<SheetsRepository["tab"]>>,
+    header: string,
+  ): Promise<void> {
+    try {
+      await sheet.loadHeaderRow();
+    } catch {
+      /* sheet may be empty; nothing to do */
+    }
+    const headers = sheet.headerValues ?? [];
+    if (!headers.includes(header)) {
+      await sheet.setHeaderRow([...headers, header]);
+    }
+  }
+
   async getItems(): Promise<TrackableItem[]> {
     const rows = await (await this.tab("supplements")).getRows();
     return rows.map(rowToItem);
@@ -128,8 +145,10 @@ export class SheetsRepository implements TrackerRepository {
 
   async addItem(item: NewItem): Promise<TrackableItem> {
     const sheet = await this.tab("supplements");
+    await this.ensureColumn(sheet, "added_date");
     const rows = await sheet.getRows();
     const id = nextId(rows);
+    const addedDate = todayISO();
     await sheet.addRow({
       id,
       name: item.name,
@@ -142,8 +161,9 @@ export class SheetsRepository implements TrackerRepository {
       notes: item.notes ?? "",
       active: item.active ? "TRUE" : "FALSE",
       time_of_day: item.timeOfDay,
+      added_date: addedDate,
     });
-    return { ...item, id };
+    return { ...item, id, addedDate };
   }
 
   async updateItem(id: string, patch: ItemPatch): Promise<void> {
@@ -164,10 +184,15 @@ export class SheetsRepository implements TrackerRepository {
 
   async setActive(id: string, active: boolean): Promise<void> {
     const sheet = await this.tab("supplements");
+    if (active) await this.ensureColumn(sheet, "added_date");
     const rows = await sheet.getRows();
     const row = rows.find((r) => String(r.get("id")) === String(id));
     if (!row) return;
     row.set("active", active ? "TRUE" : "FALSE");
+    // Stamp the activation date the first time it's made active.
+    if (active && !String(row.get("added_date") ?? "").trim()) {
+      row.set("added_date", todayISO());
+    }
     await row.save();
   }
 

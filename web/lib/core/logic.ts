@@ -81,16 +81,56 @@ export function streakLabel(n: number): string {
   return `✨ ${n}d`;
 }
 
-export function compliance(itemName: string, logs: LogEntry[]): {
-  taken: number;
-  total: number;
+export interface ComplianceResult {
+  /** Distinct days the item was taken within the window. */
+  takenDays: number;
+  /** Days the item was DUE within the window (by frequency, since it was added). */
+  expectedDays: number;
   pct: number;
-} {
-  const sl = logs.filter((l) => l.itemName === itemName);
-  const total = sl.length;
-  const taken = sl.filter((l) => l.done).length;
-  const pct = total > 0 ? Math.round((taken / total) * 1000) / 10 : 0;
-  return { taken, total, pct };
+  /** Most recent date taken (ISO), or null if never. */
+  lastTaken: string | null;
+  /** Whole days since last taken (0 = today), or null if never. */
+  daysSince: number | null;
+}
+
+/**
+ * Day-based compliance, measured from when the item was added.
+ *
+ *   expectedDays = scheduled days due between start and today (by frequency)
+ *   takenDays    = distinct days with a "done" log in that span
+ *   pct          = takenDays / expectedDays  (capped at 100)
+ *
+ * start = the later of (addedDate, or earliest log if addedDate is unknown) and
+ * the window edge (`windowDays` ago). So skipped days lower the score, and we
+ * never penalise days before the item existed.
+ */
+export function complianceDays(
+  item: TrackableItem,
+  logs: LogEntry[],
+  windowDays = 30,
+): ComplianceResult {
+  const doneDates = Array.from(
+    new Set(logs.filter((l) => l.itemName === item.name && l.done).map((l) => l.date)),
+  ).sort(); // ascending
+
+  const today = todayISO();
+  const windowStart = todayISO(new Date(Date.now() - (windowDays - 1) * 86_400_000));
+
+  const added = /^\d{4}-\d{2}-\d{2}/.test(item.addedDate ?? "")
+    ? item.addedDate.slice(0, 10)
+    : (doneDates[0] ?? today);
+  const start = added > windowStart ? added : windowStart;
+
+  const spanDays = Math.max(1, daysBetween(today, start) + 1);
+  const freq = FREQ_DAYS[item.frequency] ?? 1;
+  const expectedDays = Math.max(1, Math.ceil(spanDays / freq));
+  const takenDays = doneDates.filter((d) => d >= start).length;
+  const pct = Math.min(100, Math.round((takenDays / expectedDays) * 1000) / 10);
+
+  const lastTaken = doneDates.length ? doneDates[doneDates.length - 1] : null;
+  const daysSince = lastTaken ? daysBetween(today, lastTaken) : null;
+
+  return { takenDays, expectedDays, pct, lastTaken, daysSince };
 }
 
 export function complianceColor(pct: number): string {
