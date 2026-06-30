@@ -3,7 +3,8 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { getRepository } from "@/lib/repository";
 import { getSession } from "@/lib/auth";
-import { parseItemForm, type ItemInput } from "@/lib/validation";
+import { parseItemForm, timeSchema, type ItemInput } from "@/lib/validation";
+import { istNowHHMM } from "@/lib/core/logic";
 import { REPO_TAGS } from "@/lib/data";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -11,11 +12,6 @@ export type ActionResult = { ok: true } | { ok: false; error: string };
 async function guard() {
   const session = await getSession();
   if (!session?.user) throw new Error("Unauthorized");
-}
-
-function nowHHMM(): string {
-  const d = new Date();
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
 
 function revalidateAll() {
@@ -29,10 +25,30 @@ function revalidateAll() {
   revalidatePath("/trends");
 }
 
-export async function markDone(itemId: string, itemName: string, time?: string) {
+export async function markDone(itemId: string, itemName: string, time?: string): Promise<string> {
   await guard();
-  await getRepository().log({ itemId, itemName, done: true, time: time || nowHHMM() });
+  // The client passes its current IST time; istNowHHMM() is a server-side fallback.
+  const t = timeSchema.safeParse(time);
+  const entry = await getRepository().log({
+    itemId, itemName, done: true, time: t.success ? t.data : istNowHHMM(),
+  });
   revalidateAll();
+  return entry.id; // returned so the UI can offer an instant undo
+}
+
+export async function undoDone(logId: string) {
+  await guard();
+  await getRepository().deleteLog(logId);
+  revalidateAll();
+}
+
+export async function updateLogTime(logId: string, time: string): Promise<ActionResult> {
+  await guard();
+  const t = timeSchema.safeParse(time);
+  if (!t.success) return { ok: false, error: t.error.issues[0]?.message ?? "Invalid time" };
+  await getRepository().updateLog(logId, { time: t.data });
+  revalidateAll();
+  return { ok: true };
 }
 
 export async function toggleActive(id: string, active: boolean) {

@@ -4,12 +4,8 @@
  * proof that the UI/logic are not coupled to Sheets (verification step).
  */
 import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
-import { todayISO } from "../core/logic";
+import { daysAgoISO, istToday } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
-
-function daysAgoISO(n: number): string {
-  return todayISO(new Date(Date.now() - n * 86_400_000));
-}
 
 function seedItems(): TrackableItem[] {
   return [
@@ -48,14 +44,14 @@ export class MemoryRepository implements TrackerRepository {
 
   async getItems() { return structuredClone(this.items); }
   async getLogs(days: number) {
-    const cutoff = todayISO(new Date(Date.now() - days * 86_400_000));
+    const cutoff = daysAgoISO(days);
     return this.logs.filter((l) => l.date >= cutoff).map((l) => ({ ...l }));
   }
   async getAiSummary() { return { ...this.summary }; }
 
   async addItem(item: NewItem) {
     const id = String(Math.max(0, ...this.items.map((i) => Number(i.id) || 0)) + 1);
-    const created: TrackableItem = { ...item, id, addedDate: todayISO() };
+    const created: TrackableItem = { ...item, id, addedDate: istToday() };
     this.items.push(created);
     return created;
   }
@@ -68,7 +64,7 @@ export class MemoryRepository implements TrackerRepository {
     const it = this.items.find((i) => i.id === id);
     if (!it) return;
     it.active = active;
-    if (active && !it.addedDate) it.addedDate = todayISO();
+    if (active && !it.addedDate) it.addedDate = istToday();
   }
   async deleteItem(id: string) {
     this.items = this.items.filter((i) => i.id !== id);
@@ -76,10 +72,17 @@ export class MemoryRepository implements TrackerRepository {
   async log(entry: NewLog) {
     const id = String(Math.max(0, ...this.logs.map((l) => Number(l.id) || 0)) + 1);
     const created: LogEntry = {
-      id, itemId: entry.itemId, itemName: entry.itemName, date: todayISO(),
+      id, itemId: entry.itemId, itemName: entry.itemName, date: istToday(),
       done: entry.done, time: entry.time ?? "", notes: entry.notes ?? "",
     };
     this.logs.push(created);
     return created;
+  }
+  async deleteLog(logId: string) {
+    this.logs = this.logs.filter((l) => l.id !== logId);
+  }
+  async updateLog(logId: string, patch: { time?: string }) {
+    const l = this.logs.find((x) => x.id === logId);
+    if (l && patch.time !== undefined) l.time = patch.time;
   }
 }

@@ -1,15 +1,16 @@
 import { getItems, getLogs, getAiSummary } from "@/lib/data";
 import {
-  alreadyDoneToday, computeStreak, isDue, streakLabel, timeOfDayRank, todayISO,
+  alreadyDoneToday, computeStreak, isDue, istHour, istToday, streakLabel, timeOfDayRank,
 } from "@/lib/core/logic";
 import { supplementsTracker as T } from "@/lib/trackers/supplements";
-import { CheckCircle, SectionLabel, todColor } from "@/components/ui";
+import { SectionLabel, todColor } from "@/components/ui";
 import DueCard from "@/components/due-card";
+import DoneCard from "@/components/done-card";
 
 export const dynamic = "force-dynamic";
 
 function greeting(): string {
-  const h = new Date().getHours();
+  const h = istHour();
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
@@ -35,7 +36,7 @@ export default async function TodayPage() {
 
   const activeCount = active.length;
   const pct = activeCount > 0 ? Math.round((done.length / activeCount) * 100) : 0;
-  const today = todayISO();
+  const today = istToday();
   const dateLabel = new Date().toLocaleDateString("en-GB", {
     weekday: "long", day: "numeric", month: "short",
   });
@@ -102,16 +103,11 @@ export default async function TodayPage() {
           <div className="flex flex-col gap-2.5">
             {done.map((s) => {
               const te = logs.filter((l) => l.itemId === s.id && l.date === today && l.done);
-              const time = te.length ? te[te.length - 1].time : "";
+              const last = te.length ? te[te.length - 1] : null;
               return (
-                <div key={s.id} className="flex items-center gap-3 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-3.5 opacity-65">
-                  <CheckCircle filled />
-                  <div className="min-w-0 flex-1">
-                    <span className="text-[14px] font-medium text-[var(--c-text)] line-through decoration-[var(--c-muted)]">{s.name}</span>
-                    <p className="text-[12px] text-[var(--c-muted)]">{`${s.meta.dosage ?? ""} ${s.meta.unit ?? ""}`.trim()}</p>
-                  </div>
-                  {time && <span className="text-[12px] text-[var(--c-done)]">{time}</span>}
-                </div>
+                <DoneCard key={s.id} logId={last?.id ?? ""} name={s.name}
+                  detail={`${s.meta.dosage ?? ""} ${s.meta.unit ?? ""}`.trim()}
+                  time={last?.time} />
               );
             })}
           </div>

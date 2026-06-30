@@ -25,12 +25,46 @@ export const TIME_ORDER: Record<string, number> = {
 
 export const FREQUENCIES = Object.keys(FREQ_DAYS) as Frequency[];
 
-/** Local date as yyyy-mm-dd (matches how the sheet stores dates). */
+/** Format a given Date as yyyy-mm-dd in the server's local zone (generic helper). */
 export function todayISO(d: Date = new Date()): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+/**
+ * IST ("Asia/Kolkata") wall-clock helpers. The app is single-user in India, and
+ * Vercel runs in UTC — bare `new Date()` there reads UTC, which is why a 14:47 IST
+ * mark was logged as "09:17". `Intl.DateTimeFormat` with an explicit timeZone is
+ * correct on BOTH Vercel (UTC) and local dev (already IST); the old `Date.now()+5.5h`
+ * trick double-shifts in local dev, so it's avoided. These are pure (no server-only),
+ * so client components can import `istNowHHMM` too.
+ */
+const IST = "Asia/Kolkata";
+
+/** Today in IST as yyyy-mm-dd. Use this for all "today" comparisons + log dates. */
+export function istToday(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: IST }).format(new Date());
+}
+
+/** Current IST time as 24h HH:MM. */
+export function istNowHHMM(): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST, hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(new Date());
+}
+
+/** Current IST hour (0–23). */
+export function istHour(): number {
+  return Number(
+    new Intl.DateTimeFormat("en-GB", { timeZone: IST, hour: "2-digit", hour12: false }).format(new Date()),
+  );
+}
+
+/** The IST date `n` days before today, as yyyy-mm-dd. */
+export function daysAgoISO(n: number): string {
+  return new Date(Date.parse(istToday() + "T00:00:00Z") - n * 86_400_000).toISOString().slice(0, 10);
 }
 
 function daysBetween(aISO: string, bISO: string): number {
@@ -44,12 +78,12 @@ export function isDue(item: TrackableItem, logs: LogEntry[]): boolean {
   const taken = logs.filter((l) => l.itemName === item.name && l.done);
   if (taken.length === 0) return true;
   const last = taken.reduce((mx, l) => (l.date > mx ? l.date : mx), taken[0].date);
-  return daysBetween(todayISO(), last) >= (FREQ_DAYS[item.frequency] ?? 1);
+  return daysBetween(istToday(), last) >= (FREQ_DAYS[item.frequency] ?? 1);
 }
 
 /** Matches app.py already_logged_today: by item ID, today, done. */
 export function alreadyDoneToday(itemId: string, logs: LogEntry[]): boolean {
-  const t = todayISO();
+  const t = istToday();
   return logs.some((l) => l.itemId === itemId && l.date === t && l.done);
 }
 
@@ -64,7 +98,7 @@ export function computeStreak(
   const interval = FREQ_DAYS[frequency] ?? 1;
   const dates = Array.from(new Set(taken.map((l) => l.date))).sort().reverse();
   let streak = 0;
-  let check = todayISO();
+  let check = istToday();
   for (const d of dates) {
     if (daysBetween(check, d) <= interval) {
       streak += 1;
@@ -113,8 +147,8 @@ export function complianceDays(
     new Set(logs.filter((l) => l.itemName === item.name && l.done).map((l) => l.date)),
   ).sort(); // ascending
 
-  const today = todayISO();
-  const windowStart = todayISO(new Date(Date.now() - (windowDays - 1) * 86_400_000));
+  const today = istToday();
+  const windowStart = daysAgoISO(windowDays - 1);
 
   const added = /^\d{4}-\d{2}-\d{2}/.test(item.addedDate ?? "")
     ? item.addedDate.slice(0, 10)

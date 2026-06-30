@@ -35,4 +35,8 @@ export interface TrackerRepository {
 
   /** Record that an item was done (or skipped). Returns the created entry. */
   log(entry: NewLog): Promise<LogEntry>;
+  /** Remove a single log entry by id (used to undo an accidental mark-done). */
+  deleteLog(logId: string): Promise<void>;
+  /** Patch a single log entry by id (e.g. correct the time it was taken). */
+  updateLog(logId: string, patch: { time?: string }): Promise<void>;
 }
