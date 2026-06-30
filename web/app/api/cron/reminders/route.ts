@@ -4,10 +4,20 @@ import { sendTelegram } from "@/lib/notify";
 
 export const dynamic = "force-dynamic";
 
+/** Pick the slot from the current India time, so one daily multi-time cron
+ *  (08/13/20/21) needs no per-call `slot` param. */
+function autoSlot(): Slot {
+  const istHour = new Date(Date.now() + 5.5 * 3600 * 1000).getUTCHours();
+  if (istHour >= 6 && istHour < 11) return "morning";
+  if (istHour >= 11 && istHour < 16) return "afternoon";
+  if (istHour >= 16 && istHour < 21) return "evening";
+  return "pending";
+}
+
 /**
- * Scheduled reminder endpoint. Vercel Cron calls it with
- * `Authorization: Bearer ${CRON_SECRET}` (set CRON_SECRET in the env).
- * Computes what's due-and-not-taken for the slot and sends one Telegram message.
+ * Scheduled reminder endpoint. Authorize via `Authorization: Bearer ${CRON_SECRET}`.
+ * Pass `?slot=morning|afternoon|evening|pending` to force a slot, or omit it and
+ * the slot is derived from the current IST time (so a single multi-time cron works).
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -16,7 +26,7 @@ export async function GET(req: NextRequest) {
   }
 
   const param = req.nextUrl.searchParams.get("slot");
-  const slot: Slot = (SLOTS as string[]).includes(param ?? "") ? (param as Slot) : "pending";
+  const slot: Slot = (SLOTS as string[]).includes(param ?? "") ? (param as Slot) : autoSlot();
 
   try {
     const items = await dueForSlot(slot);
