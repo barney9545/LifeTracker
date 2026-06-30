@@ -1,16 +1,17 @@
 import type { NextRequest } from "next/server";
 import { dueForSlot, reminderMessage, SLOTS, type Slot } from "@/lib/reminders";
 import { sendTelegram } from "@/lib/notify";
+import { istHour } from "@/lib/core/logic";
 
 export const dynamic = "force-dynamic";
 
 /** Pick the slot from the current India time, so one daily multi-time cron
  *  (08/13/20/21) needs no per-call `slot` param. */
 function autoSlot(): Slot {
-  const istHour = new Date(Date.now() + 5.5 * 3600 * 1000).getUTCHours();
-  if (istHour >= 6 && istHour < 11) return "morning";
-  if (istHour >= 11 && istHour < 16) return "afternoon";
-  if (istHour >= 16 && istHour < 21) return "evening";
+  const h = istHour();
+  if (h >= 6 && h < 11) return "morning";
+  if (h >= 11 && h < 16) return "afternoon";
+  if (h >= 16 && h < 21) return "evening";
   return "pending";
 }
 

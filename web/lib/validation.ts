@@ -22,6 +22,9 @@ export const itemInputSchema = z.object({
 
 export type ItemInput = z.infer<typeof itemInputSchema>;
 
+/** A 24-hour HH:MM time string, e.g. "08:00" or "21:45". */
+export const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Invalid time");
+
 /** Parse FormData → validated input, or a first error message. */
 export function parseItemForm(formData: FormData):
   | { ok: true; data: ItemInput }

@@ -1,6 +1,6 @@
 import { getItems, getLogs, getAiSummary } from "@/lib/data";
 import {
-  alreadyDoneToday, computeStreak, isDue, streakLabel, timeOfDayRank, todayISO,
+  alreadyDoneToday, computeStreak, isDue, istHour, istToday, streakLabel, timeOfDayRank,
 } from "@/lib/core/logic";
 import { supplementsTracker as T } from "@/lib/trackers/supplements";
 import { SectionLabel, todColor } from "@/components/ui";
@@ -10,7 +10,7 @@ import DoneCard from "@/components/done-card";
 export const dynamic = "force-dynamic";
 
 function greeting(): string {
-  const h = new Date().getHours();
+  const h = istHour();
   if (h < 12) return "Good morning";
   if (h < 17) return "Good afternoon";
   return "Good evening";
@@ -36,7 +36,7 @@ export default async function TodayPage() {
 
   const activeCount = active.length;
   const pct = activeCount > 0 ? Math.round((done.length / activeCount) * 100) : 0;
-  const today = todayISO();
+  const today = istToday();
   const dateLabel = new Date().toLocaleDateString("en-GB", {
     weekday: "long", day: "numeric", month: "short",
   });

@@ -12,7 +12,7 @@ import "server-only";
 import { GoogleSpreadsheet, type GoogleSpreadsheetRow } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 import type { AiSummary, Frequency, LogEntry, TimeOfDay, TrackableItem } from "../core/types";
-import { todayISO } from "../core/logic";
+import { daysAgoISO, istToday, todayISO } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
@@ -124,7 +124,7 @@ export class SheetsRepository implements TrackerRepository {
 
   async getLogs(days: number): Promise<LogEntry[]> {
     const rows = await (await this.tab("log")).getRows();
-    const cutoff = todayISO(new Date(Date.now() - days * 86_400_000));
+    const cutoff = daysAgoISO(days);
     return rows.map(rowToLog).filter((l) => l.date >= cutoff);
   }
 
@@ -148,7 +148,7 @@ export class SheetsRepository implements TrackerRepository {
     await this.ensureColumn(sheet, "added_date");
     const rows = await sheet.getRows();
     const id = nextId(rows);
-    const addedDate = todayISO();
+    const addedDate = istToday();
     await sheet.addRow({
       id,
       name: item.name,
@@ -191,7 +191,7 @@ export class SheetsRepository implements TrackerRepository {
     row.set("active", active ? "TRUE" : "FALSE");
     // Stamp the activation date the first time it's made active.
     if (active && !String(row.get("added_date") ?? "").trim()) {
-      row.set("added_date", todayISO());
+      row.set("added_date", istToday());
     }
     await row.save();
   }
@@ -207,7 +207,7 @@ export class SheetsRepository implements TrackerRepository {
     const sheet = await this.tab("log");
     const rows = await sheet.getRows();
     const id = nextId(rows);
-    const date = todayISO();
+    const date = istToday();
     await sheet.addRow({
       id,
       date,
@@ -233,5 +233,14 @@ export class SheetsRepository implements TrackerRepository {
     const rows = await sheet.getRows();
     const row = rows.find((r) => String(r.get("id")) === String(logId));
     if (row) await row.delete();
+  }
+
+  async updateLog(logId: string, patch: { time?: string }): Promise<void> {
+    const sheet = await this.tab("log");
+    const rows = await sheet.getRows();
+    const row = rows.find((r) => String(r.get("id")) === String(logId));
+    if (!row) return;
+    if (patch.time !== undefined) row.set("time_taken", patch.time);
+    await row.save();
   }
 }
