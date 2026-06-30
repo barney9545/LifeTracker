@@ -1,4 +1,4 @@
-import { getRepository } from "@/lib/repository";
+import { getItems, getLogs, getAiSummary } from "@/lib/data";
 import { complianceColor, complianceDays, computeStreak, streakLabel } from "@/lib/core/logic";
 import { signOut } from "@/lib/auth";
 import { SectionLabel } from "@/components/ui";
@@ -6,9 +6,8 @@ import { SectionLabel } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 export default async function TrendsPage() {
-  const repo = getRepository();
   const [items, logs, ai] = await Promise.all([
-    repo.getItems(), repo.getLogs(30), repo.getAiSummary(),
+    getItems(), getLogs(30), getAiSummary(),
   ]);
   const active = items.filter((i) => i.active);
 

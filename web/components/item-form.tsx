@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TrackableItem } from "@/lib/core/types";
 import { FREQUENCIES } from "@/lib/core/logic";
@@ -16,16 +16,22 @@ export default function ItemForm({
   submitLabel,
   onDone,
 }: {
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<{ ok: boolean; error?: string } | void>;
   item?: TrackableItem;
   submitLabel: string;
   onDone?: () => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
   async function handle(formData: FormData) {
-    await action(formData);
+    setError(null);
+    const res = await action(formData);
+    if (res && res.ok === false) {
+      setError(res.error ?? "Something went wrong");
+      return;
+    }
     formRef.current?.reset();
     onDone?.();
     router.refresh();
@@ -77,6 +83,12 @@ export default function ItemForm({
         <label className={labelCls}>Notes</label>
         <textarea name="notes" rows={2} defaultValue={item?.notes ?? ""} className={inputCls} />
       </div>
+
+      {error && (
+        <p className="rounded-lg border border-[#f87171]/40 bg-[#f87171]/10 px-3 py-2 text-[12px] text-[#fca5a5]">
+          {error}
+        </p>
+      )}
 
       <button type="submit"
         className="mt-1 rounded-xl bg-[var(--c-accent-strong)] px-4 py-3 text-[14px] font-semibold text-[var(--c-accent-ink)] transition active:scale-[0.99]">

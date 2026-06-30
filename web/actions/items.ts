@@ -1,9 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { getRepository } from "@/lib/repository";
 import { getSession } from "@/lib/auth";
-import type { Frequency, TimeOfDay } from "@/lib/core/types";
+import { parseItemForm, type ItemInput } from "@/lib/validation";
+import { REPO_TAGS } from "@/lib/data";
+
+export type ActionResult = { ok: true } | { ok: false; error: string };
 
 async function guard() {
   const session = await getSession();
@@ -16,6 +19,11 @@ function nowHHMM(): string {
 }
 
 function revalidateAll() {
+  // Expire the cached read layer immediately so the user's own change is fresh
+  // on the very next render (passive navigation still uses the 30s cache).
+  revalidateTag(REPO_TAGS.items, { expire: 0 });
+  revalidateTag(REPO_TAGS.logs, { expire: 0 });
+  revalidateTag(REPO_TAGS.ai, { expire: 0 });
   revalidatePath("/");
   revalidatePath("/manage");
   revalidatePath("/trends");
@@ -39,39 +47,45 @@ export async function removeItem(id: string) {
   revalidateAll();
 }
 
-function readMeta(formData: FormData) {
+function toMeta(d: ItemInput) {
   return {
-    category: String(formData.get("category") ?? ""),
-    dosage: String(formData.get("dosage") ?? ""),
-    unit: String(formData.get("unit") ?? ""),
-    best_taken_with: String(formData.get("best_taken_with") ?? ""),
-    times_per_day: String(formData.get("times_per_day") ?? "1"),
+    category: d.category,
+    dosage: String(d.dosage),
+    unit: d.unit,
+    best_taken_with: d.best_taken_with,
+    times_per_day: String(d.times_per_day),
   };
 }
 
-export async function addItem(formData: FormData) {
+export async function addItem(formData: FormData): Promise<ActionResult> {
   await guard();
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) throw new Error("Name is required");
+  const parsed = parseItemForm(formData);
+  if (!parsed.ok) return parsed;
+  const d = parsed.data;
   await getRepository().addItem({
-    name,
+    name: d.name,
     active: true,
-    frequency: (String(formData.get("frequency") ?? "Daily") || "Daily") as Frequency,
-    timeOfDay: (String(formData.get("time_of_day") ?? "Anytime") || "Anytime") as TimeOfDay,
-    notes: String(formData.get("notes") ?? ""),
-    meta: readMeta(formData),
+    frequency: d.frequency,
+    timeOfDay: d.time_of_day,
+    notes: d.notes,
+    meta: toMeta(d),
   });
   revalidateAll();
+  return { ok: true };
 }
 
-export async function editItem(id: string, formData: FormData) {
+export async function editItem(id: string, formData: FormData): Promise<ActionResult> {
   await guard();
+  const parsed = parseItemForm(formData);
+  if (!parsed.ok) return parsed;
+  const d = parsed.data;
   await getRepository().updateItem(id, {
-    name: String(formData.get("name") ?? "").trim(),
-    frequency: (String(formData.get("frequency") ?? "Daily") || "Daily") as Frequency,
-    timeOfDay: (String(formData.get("time_of_day") ?? "Anytime") || "Anytime") as TimeOfDay,
-    notes: String(formData.get("notes") ?? ""),
-    meta: readMeta(formData),
+    name: d.name,
+    frequency: d.frequency,
+    timeOfDay: d.time_of_day,
+    notes: d.notes,
+    meta: toMeta(d),
   });
   revalidateAll();
+  return { ok: true };
 }

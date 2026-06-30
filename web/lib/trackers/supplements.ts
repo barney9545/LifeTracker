@@ -1,3 +1,4 @@
+import type { TimeOfDay } from "../core/types";
 import type { TrackerDefinition } from "./types";
 
 export const CATEGORIES = [
@@ -5,7 +6,7 @@ export const CATEGORIES = [
   "Performance", "Gut Health", "Herb", "Other",
 ];
 export const UNITS = ["mg", "mcg", "IU", "g", "ml", "B CFU", "other"];
-export const TIME_OF_DAY = ["Morning", "Afternoon", "Evening", "Anytime"];
+export const TIME_OF_DAY: TimeOfDay[] = ["Morning", "Afternoon", "Evening", "Anytime"];
 
 export const supplementsTracker: TrackerDefinition = {
   key: "supplements",

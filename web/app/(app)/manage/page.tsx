@@ -1,4 +1,4 @@
-import { getRepository } from "@/lib/repository";
+import { getItems } from "@/lib/data";
 import { supplementsTracker as T } from "@/lib/trackers/supplements";
 import { addItem } from "@/actions/items";
 import ItemForm from "@/components/item-form";
@@ -8,7 +8,7 @@ import { SectionLabel } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 export default async function ManagePage() {
-  const items = await getRepository().getItems();
+  const items = await getItems();
   const activeItems = items.filter((i) => i.active);
   const pausedItems = items.filter((i) => !i.active);
 

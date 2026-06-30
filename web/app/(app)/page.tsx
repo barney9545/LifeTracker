@@ -1,4 +1,4 @@
-import { getRepository } from "@/lib/repository";
+import { getItems, getLogs, getAiSummary } from "@/lib/data";
 import {
   alreadyDoneToday, computeStreak, isDue, streakLabel, timeOfDayRank, todayISO,
 } from "@/lib/core/logic";
@@ -16,11 +16,10 @@ function greeting(): string {
 }
 
 export default async function TodayPage() {
-  const repo = getRepository();
   const [items, logs, ai] = await Promise.all([
-    repo.getItems(),
-    repo.getLogs(30),
-    repo.getAiSummary(),
+    getItems(),
+    getLogs(30),
+    getAiSummary(),
   ]);
 
   const active = items

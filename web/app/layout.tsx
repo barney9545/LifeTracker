@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   title: "Tracker",
   description: "Your personal supplement & habit tracker",
   manifest: "/manifest.webmanifest",
+  // Private, single-user app — keep it out of search engines.
+  robots: { index: false, follow: false },
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Tracker" },
   icons: {
     icon: "/icon-192.png",
