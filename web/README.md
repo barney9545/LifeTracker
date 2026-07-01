@@ -29,10 +29,18 @@ For UI work without Google/Sheets, set `REPOSITORY=memory` and `AUTH_DEV_BYPASS=
 2. Add every variable from `.env.example` (real values) in Project → Settings → Environment Variables.
 3. Add the production OAuth redirect URI in Google Cloud: `https://<domain>/api/auth/callback/google`.
 
-## Reminders (in-app, via Telegram)
-`/api/cron/reminders?slot=morning|afternoon|evening|pending` computes what's due-and-not-taken (reusing `lib/core` logic) and sends one Telegram message. Protected by `CRON_SECRET`. Scheduled by `vercel.json` crons (IST times expressed in UTC). If the hosting tier limits cron jobs, point a free pinger (e.g. cron-job.org) at the same four URLs with header `Authorization: Bearer <CRON_SECRET>`.
+## Reminders + daily digest (in-app, via Telegram)
+`/api/cron/reminders` runs one of three actions, chosen by the current IST hour, so a **single** daily cron covers everything. Protected by `CRON_SECRET` (header `Authorization: Bearer <CRON_SECRET>`).
 
-The daily AI digest currently lives in Google Apps Script (`digest.gs`), reading/writing the same sheet.
+| IST time | Action | What it sends |
+|----------|--------|---------------|
+| ~08:00 | `summary` | Builds the day-based compliance digest, calls Groq (`GROQ_API_KEY`) for the nudge/trend, saves it to the `ai_summary` sheet (so the Today page insight refreshes), and Telegrams it. |
+| ~13:00 | `lunch` | Reminds **Morning + Afternoon** supplements still pending. |
+| ~20:00 | `evening` | Reminds **everything** still pending (any time of day). |
+
+Point one free pinger (e.g. cron-job.org, timezone Asia/Kolkata) at the endpoint on cron `0 8,13,20 * * *`. Force an action for testing with `?do=summary|lunch|evening`.
+
+The digest is **in-app** now — the legacy `digest.gs` Apps Script is retired (disable its time trigger to avoid duplicate summaries).
 
 ## Security
 Security headers + CSP in `next.config.ts`; `noindex` + `robots.ts` (private app); auth on every mutation; zod validation; secrets server-only.

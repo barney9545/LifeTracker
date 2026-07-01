@@ -27,6 +27,8 @@ export interface TrackerRepository {
   getLogs(days: number): Promise<LogEntry[]>;
   /** Latest AI summary, or null if none. */
   getAiSummary(): Promise<AiSummary | null>;
+  /** Append a new AI summary (daily digest writes this so the Today page updates). */
+  saveAiSummary(summary: { short: string; long: string }): Promise<void>;
 
   addItem(item: NewItem): Promise<TrackableItem>;
   updateItem(id: string, patch: ItemPatch): Promise<void>;

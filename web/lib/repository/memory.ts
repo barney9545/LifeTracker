@@ -4,7 +4,7 @@
  * proof that the UI/logic are not coupled to Sheets (verification step).
  */
 import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
-import { daysAgoISO, istToday } from "../core/logic";
+import { daysAgoISO, istStamp, istToday } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
 
 function seedItems(): TrackableItem[] {
@@ -48,6 +48,9 @@ export class MemoryRepository implements TrackerRepository {
     return this.logs.filter((l) => l.date >= cutoff).map((l) => ({ ...l }));
   }
   async getAiSummary() { return { ...this.summary }; }
+  async saveAiSummary(summary: { short: string; long: string }) {
+    this.summary = { short: summary.short, long: summary.long, updatedAt: istStamp() };
+  }
 
   async addItem(item: NewItem) {
     const id = String(Math.max(0, ...this.items.map((i) => Number(i.id) || 0)) + 1);

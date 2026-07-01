@@ -35,7 +35,11 @@ export default async function TodayPage() {
   }
 
   const activeCount = active.length;
-  const pct = activeCount > 0 ? Math.round((done.length / activeCount) * 100) : 0;
+  // Progress is measured against what's actually due today (due + already done),
+  // not every active item — a weekly supplement that isn't due today shouldn't
+  // drag the percentage down.
+  const dueToday = due.length + done.length;
+  const pct = dueToday > 0 ? Math.round((done.length / dueToday) * 100) : 0;
   const today = istToday();
   const dateLabel = new Date().toLocaleDateString("en-GB", {
     weekday: "long", day: "numeric", month: "short",
