@@ -12,7 +12,7 @@ import "server-only";
 import { GoogleSpreadsheet, type GoogleSpreadsheetRow } from "google-spreadsheet";
 import { JWT } from "google-auth-library";
 import type { AiSummary, Frequency, LogEntry, TimeOfDay, TrackableItem } from "../core/types";
-import { daysAgoISO, istToday, todayISO } from "../core/logic";
+import { daysAgoISO, istStamp, istToday, todayISO } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
@@ -141,6 +141,20 @@ export class SheetsRepository implements TrackerRepository {
     } catch {
       return null;
     }
+  }
+
+  async saveAiSummary(summary: { short: string; long: string }): Promise<void> {
+    const doc = await this.doc();
+    let sheet = doc.sheetsByTitle["ai_summary"];
+    if (!sheet) {
+      sheet = await doc.addSheet({ title: "ai_summary", headerValues: ["short", "long", "updated_at", "date"] });
+    }
+    await sheet.addRow({
+      short: summary.short,
+      long: summary.long,
+      updated_at: istStamp(),
+      date: istToday(),
+    });
   }
 
   async addItem(item: NewItem): Promise<TrackableItem> {

@@ -67,6 +67,20 @@ export function daysAgoISO(n: number): string {
   return new Date(Date.parse(istToday() + "T00:00:00Z") - n * 86_400_000).toISOString().slice(0, 10);
 }
 
+/** Human IST timestamp like "01 Jul, 08:00" (for ai_summary.updated_at). */
+export function istStamp(): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST, day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(new Date());
+}
+
+/** Human IST date like "Wednesday, 01 July 2026" (digest header). */
+export function istLongDate(): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: IST, weekday: "long", day: "2-digit", month: "long", year: "numeric",
+  }).format(new Date());
+}
+
 function daysBetween(aISO: string, bISO: string): number {
   const a = new Date(aISO + "T00:00:00");
   const b = new Date(bISO + "T00:00:00");
