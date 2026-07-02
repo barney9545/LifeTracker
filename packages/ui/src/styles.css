@@ -1,0 +1,512 @@
+/* =============================================================================
+   @lifetracker/ui — self-contained design kit stylesheet
+   -----------------------------------------------------------------------------
+   Ships design tokens (CSS custom properties) + every component class so the kit
+   renders with ZERO app context. No Tailwind, no host CSS required.
+
+   Apply a theme class on a wrapper: <div class="theme-lavender"> ... </div>
+   (.theme-lavender is the default palette.)
+   ========================================================================== */
+
+/* ── Design tokens: Lavender (default) ─────────────────────────────────────── */
+.theme-lavender {
+  --c-bg: #0d0a14;
+  --c-bg-glow: radial-gradient(120% 70% at 50% -10%, #1d1430 0%, #0d0a14 55%);
+  --c-surface: #171022;
+  --c-surface-2: #1e1630;
+  --c-border: rgba(167, 139, 250, 0.16);
+  --c-text: #efecf8;
+  --c-muted: #9b93b5;
+  --c-accent: #a78bfa;
+  --c-accent-strong: #8b5cf6;
+  --c-accent-ink: #ffffff;
+  --c-accent-soft: rgba(139, 92, 246, 0.16);
+  --c-due: #fbbf24;
+  --c-done: #4ade80;
+}
+
+/* ── Design tokens: Green ──────────────────────────────────────────────────── */
+.theme-green {
+  --c-bg: #07120d;
+  --c-bg-glow: radial-gradient(120% 70% at 50% -10%, #0d2a1d 0%, #07120d 55%);
+  --c-surface: #0f1f17;
+  --c-surface-2: #142a1f;
+  --c-border: rgba(52, 211, 153, 0.16);
+  --c-text: #e8f5ee;
+  --c-muted: #8aa89a;
+  --c-accent: #34d399;
+  --c-accent-strong: #10b981;
+  --c-accent-ink: #04130c;
+  --c-accent-soft: rgba(16, 185, 129, 0.15);
+  --c-due: #fbbf24;
+  --c-done: #4ade80;
+}
+
+/* Shared non-theme tokens (radii, time-of-day stripes, missed/danger). */
+:where(.theme-lavender, .theme-green) {
+  --c-danger: #f87171;
+  --c-danger-soft: rgba(248, 113, 113, 0.1);
+  --c-danger-border: rgba(248, 113, 113, 0.4);
+  --radius-card: 16px;   /* rounded-2xl */
+  --radius-control: 12px; /* inputs / buttons */
+  --tod-morning: #fbbf24;
+  --tod-afternoon: #60a5fa;
+  --tod-evening: #a78bfa;
+  --tod-anytime: #6b7280;
+}
+
+/* ── Base body / shell ─────────────────────────────────────────────────────── */
+.ds-body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  background: var(--c-bg, #0d0a14);
+  color: var(--c-text, #efecf8);
+  -webkit-font-smoothing: antialiased;
+  color-scheme: dark;
+}
+
+/* App shell w/ radial glow — matches web/app/(app)/layout.tsx .app-shell */
+.ds-shell {
+  background: var(--c-bg-glow);
+  min-height: 100dvh;
+}
+
+/* Mobile column, max-width 430px, centered. */
+.ds-column {
+  margin-inline: auto;
+  width: 100%;
+  max-width: 430px;
+  padding-inline: 20px;
+  padding-top: 16px;
+  padding-bottom: 112px;
+  box-sizing: border-box;
+}
+
+.ds-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Typography helpers ────────────────────────────────────────────────────── */
+.ds-heading {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--c-text);
+}
+
+.ds-section-label {
+  margin: 24px 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--c-muted);
+}
+.ds-section-label:first-child { margin-top: 0; }
+
+/* ── Card ──────────────────────────────────────────────────────────────────── */
+.ds-card {
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  box-sizing: border-box;
+}
+.ds-card--flush { padding: 0; }
+.ds-card--alt { background: var(--c-surface-2); }
+
+/* ── Button ────────────────────────────────────────────────────────────────── */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: 12px 16px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease,
+    opacity 0.15s ease;
+}
+.ds-btn:active { transform: scale(0.99); }
+.ds-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.ds-btn--primary {
+  background: var(--c-accent-strong);
+  color: var(--c-accent-ink);
+}
+.ds-btn--secondary {
+  background: var(--c-surface);
+  border-color: var(--c-border);
+  color: var(--c-text);
+}
+.ds-btn--ghost {
+  background: transparent;
+  color: var(--c-accent);
+  font-weight: 500;
+}
+.ds-btn--block { width: 100%; }
+
+/* Small round icon button (used by ItemRow). */
+.ds-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  width: 36px;
+  flex-shrink: 0;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--c-text);
+  cursor: pointer;
+  transition: transform 0.1s ease, opacity 0.15s ease;
+}
+.ds-icon-btn:active { transform: scale(0.9); }
+.ds-icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Form controls ─────────────────────────────────────────────────────────── */
+.ds-field-label {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 12px;
+  color: var(--c-muted);
+}
+
+.ds-input,
+.ds-textarea,
+.ds-select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+  border-radius: var(--radius-control);
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--c-text);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.ds-input:focus,
+.ds-textarea:focus,
+.ds-select:focus { border-color: var(--c-accent); }
+.ds-textarea { resize: vertical; min-height: 60px; }
+.ds-select { appearance: none; }
+
+/* Small time input, e.g. inside SupplementCard "done" variant. */
+.ds-time-input {
+  flex-shrink: 0;
+  width: auto;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+  border-radius: 8px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--c-done);
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.ds-time-input:focus { border-color: var(--c-accent); }
+.ds-time-input:disabled { opacity: 0.6; }
+
+/* ── Chip / Badge / pills ──────────────────────────────────────────────────── */
+.ds-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 9999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+.ds-chip--accent { color: var(--c-accent); background: var(--c-accent-soft); }
+.ds-chip--muted { color: var(--c-muted); background: var(--c-surface-2); }
+.ds-chip--done { color: var(--c-done); background: rgba(74, 222, 128, 0.14); }
+.ds-chip--due { color: var(--c-due); background: rgba(251, 191, 36, 0.14); }
+.ds-chip--danger { color: var(--c-danger); background: var(--c-danger-soft); }
+/* bare streak chip (no background) — matches DueCard streak text */
+.ds-chip--bare { padding: 0; background: transparent; color: var(--c-accent); }
+
+/* ── ProgressBar ───────────────────────────────────────────────────────────── */
+.ds-progress {
+  height: 8px;
+  width: 100%;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: var(--c-surface-2);
+}
+.ds-progress__fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--c-accent);
+  transition: width 0.3s ease;
+}
+
+/* ── Avatar ────────────────────────────────────────────────────────────────── */
+.ds-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  width: 40px;
+  border-radius: 9999px;
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+  font-size: 15px;
+  font-weight: 600;
+  overflow: hidden;
+}
+.ds-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+/* ── CheckCircle (SVG sizing only; colors come from props) ─────────────────── */
+.ds-check-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  line-height: 0;
+  transition: transform 0.1s ease;
+}
+.ds-check-btn:active { transform: scale(0.9); }
+.ds-check-btn:disabled { cursor: not-allowed; opacity: 0.6; }
+
+/* ── SupplementCard (the brand card) ───────────────────────────────────────── */
+.ds-supp {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  border-radius: var(--radius-card);
+  padding: 14px;
+  box-sizing: border-box;
+  transition: opacity 0.15s ease;
+}
+.ds-supp--done { opacity: 0.65; }
+
+.ds-supp__stripe {
+  height: 36px;
+  width: 4px;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  background: var(--tod-anytime);
+}
+.ds-supp__stripe--missed { background: var(--c-danger); }
+
+.ds-supp__body { min-width: 0; flex: 1; }
+
+.ds-supp__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ds-supp__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--c-text);
+}
+.ds-supp__name--done {
+  font-size: 14px;
+  text-decoration: line-through;
+  text-decoration-color: var(--c-muted);
+}
+.ds-supp__name--missed { color: var(--c-danger); }
+
+.ds-supp__detail {
+  margin: 2px 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--c-muted);
+}
+
+/* ── ProgressCard ──────────────────────────────────────────────────────────── */
+.ds-progress-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.ds-progress-card__label { font-size: 13px; font-weight: 500; color: var(--c-text); }
+.ds-progress-card__pct { font-size: 13px; font-weight: 600; color: var(--c-accent); }
+.ds-progress-card__bar-wrap { margin-bottom: 16px; }
+.ds-progress-card__stats {
+  display: flex;
+  justify-content: space-between;
+}
+.ds-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.ds-stat__value { font-size: 20px; font-weight: 600; line-height: 1; }
+.ds-stat__label { margin-top: 4px; font-size: 11px; color: var(--c-muted); }
+
+/* ── ItemRow (manage list row) ─────────────────────────────────────────────── */
+.ds-item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+}
+.ds-item-row__body { min-width: 0; flex: 1; }
+.ds-item-row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--c-text);
+}
+.ds-item-row__detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--c-muted);
+}
+.ds-item-row__actions { display: flex; flex-shrink: 0; gap: 6px; }
+
+/* ── Calendar heatmap ──────────────────────────────────────────────────────── */
+.ds-calendar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.ds-calendar__title { font-size: 15px; font-weight: 600; color: var(--c-text); }
+.ds-calendar__nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  width: 28px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+  border-radius: 8px;
+  color: var(--c-text);
+  cursor: pointer;
+  font-size: 13px;
+}
+.ds-calendar__nav:disabled { opacity: 0.4; cursor: not-allowed; }
+.ds-calendar__nav-group { display: flex; gap: 6px; }
+
+.ds-calendar__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.ds-calendar__dow {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--c-muted);
+  padding-bottom: 2px;
+}
+
+.ds-day {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--c-accent-ink);
+  background: var(--c-surface-2);
+}
+.ds-day--empty { background: transparent; }
+.ds-day--muted { color: var(--c-muted); background: var(--c-surface-2); }
+
+/* ── TabSwitch ─────────────────────────────────────────────────────────────── */
+.ds-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border-radius: var(--radius-control);
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+}
+.ds-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--c-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.ds-tab--active {
+  background: var(--c-accent-soft);
+  color: var(--c-accent);
+}
+
+/* ── BottomNav ─────────────────────────────────────────────────────────────── */
+.ds-bottom-nav {
+  border-top: 1px solid var(--c-border);
+  background: color-mix(in srgb, var(--c-surface) 95%, transparent);
+  backdrop-filter: blur(8px);
+}
+.ds-bottom-nav__inner {
+  margin-inline: auto;
+  display: flex;
+  max-width: 430px;
+  align-items: stretch;
+  justify-content: space-around;
+  padding: 8px 8px calc(env(safe-area-inset-bottom, 0px) + 8px);
+}
+.ds-bottom-nav__item {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  border-radius: var(--radius-control);
+  padding: 6px 0;
+  color: var(--c-muted);
+  text-decoration: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font: inherit;
+}
+.ds-bottom-nav__item--active { color: var(--c-accent); }
+.ds-bottom-nav__label { font-size: 11px; font-weight: 500; }
+
+/* When BottomNav is used as a fixed dock (optional). */
+.ds-bottom-nav--fixed {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 50;
+}
+
+/* ── Utility: strikethrough / truncate helpers exposed for consumers ───────── */
+.ds-truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

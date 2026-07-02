@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@lifetracker/ui — standalone demo</title>
+
+    <!-- Ship the kit's self-contained styles (tokens + component classes). -->
+    <link rel="stylesheet" href="../dist/styles.css" />
+    <style>
+      body { margin: 0; }
+      .demo-wrap { display: flex; flex-wrap: wrap; gap: 24px; padding: 24px; justify-content: center; }
+      .demo-note { font-size: 12px; color: var(--c-muted); margin: 4px 0 0; }
+      .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+      .swatch { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 10px; color: var(--c-muted); }
+      .swatch i { display: block; width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--c-border); }
+    </style>
+
+    <!--
+      React from a CDN so the demo runs with NO build step / NO dev server.
+      Open this file directly (file://) OR serve statically (npx serve .).
+    -->
+    <script type="importmap">
+      {
+        "imports": {
+          "react": "https://esm.sh/react@18.3.1",
+          "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+          "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime"
+        }
+      }
+    </script>
+  </head>
+  <body class="ds-body">
+    <div id="root"></div>
+    <script type="module" src="./demo.js"></script>
+  </body>
+</html>
