@@ -117,13 +117,16 @@ function buildPrompt(stats: Stat[], guidance: string): string {
 async function generateAi(
   stats: Stat[],
   config: SummaryConfig,
-): Promise<{ short: string; long: string }> {
+): Promise<{ short: string; long: string; debug?: string }> {
   const fallback = {
     short: "Check in on your supplements today — consistency is what makes them work.",
     long: "(AI summary unavailable today.)",
   };
   const key = process.env.GROQ_API_KEY;
-  if (!key) return fallback;
+  if (!key) {
+    console.error("[digest] GROQ_API_KEY is not set");
+    return { ...fallback, debug: "GROQ_API_KEY not set in this environment" };
+  }
 
   try {
     const res = await fetch(GROQ_URL, {
@@ -133,20 +136,29 @@ async function generateAi(
         model: GROQ_MODEL,
         messages: [{ role: "user", content: buildPrompt(stats, config.guidance) }],
         temperature: config.temperature,
-        max_tokens: 2000,
+        max_tokens: 3000, // headroom so the reasoning model's JSON isn't truncated
         reasoning_effort: "low",
         response_format: { type: "json_object" },
       }),
     });
-    if (!res.ok) return fallback;
-    const json = await res.json();
+    const bodyText = await res.text();
+    if (!res.ok) {
+      console.error(`[digest] Groq HTTP ${res.status}: ${bodyText}`);
+      return { ...fallback, debug: `Groq HTTP ${res.status}: ${bodyText.slice(0, 400)}` };
+    }
+    const json = JSON.parse(bodyText);
     const raw: string = json?.choices?.[0]?.message?.content ?? "";
     const cleaned = raw.replace(/```json\s*/gi, "").replace(/```/g, "").trim();
-    if (!cleaned) return fallback;
+    if (!cleaned) {
+      console.error(`[digest] Groq returned empty content: ${bodyText.slice(0, 400)}`);
+      return { ...fallback, debug: `empty content (finish=${json?.choices?.[0]?.finish_reason}): ${bodyText.slice(0, 300)}` };
+    }
     const parsed = JSON.parse(cleaned);
-    return parsed.short && parsed.long ? { short: parsed.short, long: parsed.long } : fallback;
-  } catch {
-    return fallback;
+    if (parsed.short && parsed.long) return { short: parsed.short, long: parsed.long };
+    return { ...fallback, debug: `missing short/long: ${cleaned.slice(0, 300)}` };
+  } catch (e) {
+    console.error("[digest] Groq call failed:", e);
+    return { ...fallback, debug: `exception: ${(e as Error).message}` };
   }
 }
 
@@ -178,7 +190,7 @@ function buildMessage(short: string, long: string, stats: Stat[]): string {
  * Build the daily digest from live data, persist it (so the Today page's AI
  * Insight refreshes), and send it to Telegram. Returns a small status object.
  */
-export async function runDailyDigest(): Promise<{ short: string; items: number }> {
+export async function runDailyDigest(): Promise<{ short: string; items: number; debug?: string }> {
   const repo = getRepository();
   const [items, logs, config] = await Promise.all([
     repo.getItems(), repo.getLogs(30), getSummaryConfig(),
@@ -187,10 +199,10 @@ export async function runDailyDigest(): Promise<{ short: string; items: number }
   if (active.length === 0) return { short: "", items: 0 };
 
   const stats = buildStats(active, logs);
-  const { short, long } = await generateAi(stats, config);
+  const { short, long, debug } = await generateAi(stats, config);
   await repo.saveAiSummary({ short, long });
   await sendTelegram(buildMessage(short, long, stats));
-  return { short, items: active.length };
+  return { short, items: active.length, debug };
 }
 
 /**
@@ -207,8 +219,9 @@ export async function previewDigest(
   const active = items.filter((i) => i.active);
   const stats = buildStats(active, logs);
   const config: SummaryConfig = { guidance, temperature };
-  const { short, long } = await generateAi(stats, config);
+  const { short, long, debug } = await generateAi(stats, config);
   const message = buildMessage(short, long, stats);
-  const debug = buildPrompt(stats, guidance);
-  return { short, long, message, debug };
+  // `debug` carries the fallback reason (missing key, HTTP error, empty content),
+  // so a preview that returns the generic line explains why.
+  return { short, long, message, debug: debug ?? "" };
 }

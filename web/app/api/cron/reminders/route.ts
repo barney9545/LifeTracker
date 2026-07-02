@@ -39,9 +39,9 @@ export async function GET(req: NextRequest) {
 
   try {
     if (action === "summary") {
-      const { short, items } = await runDailyDigest();
+      const { short, items, debug } = await runDailyDigest();
       revalidateTag(REPO_TAGS.ai, { expire: 0 }); // refresh the Today page insight
-      return Response.json({ action, sent: items > 0, items, short });
+      return Response.json({ action, sent: items > 0, items, short, debug });
     }
 
     const items = await dueForSlot(action);

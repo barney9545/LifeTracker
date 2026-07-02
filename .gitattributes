@@ -1,0 +1,15 @@
+# Normalize all text files to LF in the repository (stops CRLF/LF churn that
+# caused spurious whole-file merge conflicts on Windows).
+* text=auto eol=lf
+
+# Treat common binaries as binary so they are never line-ending-converted.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.woff  binary
+*.woff2 binary
+*.ttf  binary
+*.otf  binary
+*.pdf  binary
