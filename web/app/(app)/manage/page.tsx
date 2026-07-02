@@ -1,16 +1,23 @@
 import { getItems } from "@/lib/data";
+import { getRepository } from "@/lib/repository";
+import { DEFAULT_GUIDANCE, DEFAULT_TEMPERATURE } from "@/lib/summary";
 import { supplementsTracker as T } from "@/lib/trackers/supplements";
 import { addItem } from "@/actions/items";
 import ItemForm from "@/components/item-form";
 import ItemRow from "@/components/item-row";
+import SummaryPromptEditor from "@/components/summary-prompt-editor";
 import { SectionLabel } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
 export default async function ManagePage() {
-  const items = await getItems();
+  const [items, settings] = await Promise.all([getItems(), getRepository().getSettings()]);
   const activeItems = items.filter((i) => i.active);
   const pausedItems = items.filter((i) => !i.active);
+
+  const promptValue = (settings["summary_prompt"] ?? "").trim() || DEFAULT_GUIDANCE;
+  const tRaw = Number(settings["summary_temperature"]);
+  const temperatureValue = Number.isFinite(tRaw) && tRaw >= 0 && tRaw <= 2 ? tRaw : DEFAULT_TEMPERATURE;
 
   return (
     <>
@@ -29,6 +36,20 @@ export default async function ManagePage() {
         </summary>
         <div className="border-t border-[var(--c-border)] p-4">
           <ItemForm action={addItem} submitLabel={`Add ${T.label.toLowerCase()}`} />
+        </div>
+      </details>
+
+      <details className="mb-2 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)]">
+        <summary className="cursor-pointer list-none px-4 py-3.5 text-[14px] font-medium text-[var(--c-text)]">
+          ✨ Daily summary prompt
+        </summary>
+        <div className="border-t border-[var(--c-border)] p-4">
+          <SummaryPromptEditor
+            initialPrompt={promptValue}
+            initialTemperature={temperatureValue}
+            defaultPrompt={DEFAULT_GUIDANCE}
+            defaultTemperature={DEFAULT_TEMPERATURE}
+          />
         </div>
       </details>
 

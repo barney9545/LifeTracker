@@ -81,7 +81,7 @@ export function istLongDate(): string {
   }).format(new Date());
 }
 
-function daysBetween(aISO: string, bISO: string): number {
+export function daysBetween(aISO: string, bISO: string): number {
   const a = new Date(aISO + "T00:00:00");
   const b = new Date(bISO + "T00:00:00");
   return Math.round((a.getTime() - b.getTime()) / 86_400_000);
@@ -191,4 +191,120 @@ export function complianceColor(pct: number): string {
 /** Sort key helper for ordering by time of day (Morning→Anytime). */
 export function timeOfDayRank(tod: string): number {
   return TIME_ORDER[tod] ?? 4;
+}
+
+/* ------------------------------------------------------------------ */
+/* Frequency-aware historical status (for the calendar + day pages).   */
+/* ------------------------------------------------------------------ */
+
+/** The earliest "done" log date for an item, or null if never taken. */
+function earliestDoneDate(item: TrackableItem, logs: LogEntry[]): string | null {
+  let min: string | null = null;
+  for (const l of logs) {
+    if (l.itemName === item.name && l.done && (min === null || l.date < min)) min = l.date;
+  }
+  return min;
+}
+
+/** The effective "added" date: the stamped addedDate, else the earliest log (legacy rows). */
+function effectiveAdded(item: TrackableItem, logs: LogEntry[]): string | null {
+  if (/^\d{4}-\d{2}-\d{2}/.test(item.addedDate ?? "")) return item.addedDate.slice(0, 10);
+  return earliestDoneDate(item, logs);
+}
+
+/** Did the item exist on `dateISO`? (addedDate <= dateISO, fallback to earliest log.) */
+export function existedOn(item: TrackableItem, logs: LogEntry[], dateISO: string): boolean {
+  const added = effectiveAdded(item, logs);
+  if (added === null) return false; // no addedDate and never logged → treat as not-yet-existing
+  return added <= dateISO;
+}
+
+export type DayStatus = "taken" | "missed" | "notdue" | "before";
+
+/**
+ * Status of an item on a specific past/current day, frequency-aware.
+ * `doneDates` is the item's set of distinct done-dates (yyyy-mm-dd).
+ * - `before`  — the item didn't exist yet.
+ * - `taken`   — there's a done log on that exact day.
+ * - `missed`  — it was due that day (no prior take within the frequency window) but not taken.
+ * - `notdue`  — a prior take covers that day (within the frequency interval).
+ */
+export function statusOnDay(
+  item: TrackableItem,
+  doneDates: Set<string>,
+  dateISO: string,
+): DayStatus {
+  // Effective added date: stamped addedDate wins; else earliest done date (legacy rows).
+  let added: string | null = null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(item.addedDate ?? "")) {
+    added = item.addedDate.slice(0, 10);
+  } else {
+    for (const d of doneDates) if (added === null || d < added) added = d;
+  }
+  if (added === null || added > dateISO) return "before";
+  if (doneDates.has(dateISO)) return "taken";
+
+  // Find the most recent take STRICTLY before dateISO.
+  let lastPrior: string | null = null;
+  for (const d of doneDates) {
+    if (d < dateISO && (lastPrior === null || d > lastPrior)) lastPrior = d;
+  }
+  const freq = FREQ_DAYS[item.frequency] ?? 1;
+  if (lastPrior === null) return "missed"; // due since it existed, never taken before
+  return daysBetween(dateISO, lastPrior) >= freq ? "missed" : "notdue";
+}
+
+export interface DayBucketEntry {
+  item: TrackableItem;
+  logId: string;
+  time: string;
+}
+
+export interface DayBuckets {
+  taken: DayBucketEntry[];
+  missed: TrackableItem[];
+  notDue: TrackableItem[];
+}
+
+/**
+ * Bucket the given (currently-active) items into taken/missed/notDue for `dateISO`.
+ * Builds each item's done-date set once for efficiency. Items that didn't exist
+ * on the day are excluded entirely.
+ */
+export function dayBuckets(
+  items: TrackableItem[],
+  logs: LogEntry[],
+  dateISO: string,
+): DayBuckets {
+  const buckets: DayBuckets = { taken: [], missed: [], notDue: [] };
+  for (const item of items) {
+    const done = logs.filter((l) => l.itemName === item.name && l.done);
+    const doneDates = new Set(done.map((l) => l.date));
+    const status = statusOnDay(item, doneDates, dateISO);
+    if (status === "before") continue;
+    if (status === "taken") {
+      // Prefer the last log on that date (mirrors the Today page's choice).
+      const onDay = done.filter((l) => l.date === dateISO);
+      const last = onDay.length ? onDay[onDay.length - 1] : null;
+      buckets.taken.push({ item, logId: last?.id ?? "", time: last?.time ?? "" });
+    } else if (status === "missed") {
+      buckets.missed.push(item);
+    } else {
+      buckets.notDue.push(item);
+    }
+  }
+  return buckets;
+}
+
+/** Compliance for a single day: taken ÷ due; pct is null when nothing was due. */
+export function dayCompliance(
+  items: TrackableItem[],
+  logs: LogEntry[],
+  dateISO: string,
+): { due: number; taken: number; pct: number | null } {
+  const b = dayBuckets(items, logs, dateISO);
+  const due = b.taken.length + b.missed.length;
+  const taken = b.taken.length;
+  const pct = due > 0 ? Math.round((taken / due) * 100) : null;
+  return { due, taken, pct };
 }

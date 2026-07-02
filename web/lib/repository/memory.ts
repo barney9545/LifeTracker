@@ -41,6 +41,7 @@ export class MemoryRepository implements TrackerRepository {
     long: "Over the last 30 days your morning stack is rock solid (Vitamin D3 and Omega-3 near 100%). Magnesium is more hit-or-miss in the evenings — anchoring it to dinner could lift it above 80%. Keep the momentum going.",
     updatedAt: "25 Jun, 08:00",
   };
+  private settings = new Map<string, string>();
 
   async getItems() { return structuredClone(this.items); }
   async getLogs(days: number) {
@@ -51,6 +52,8 @@ export class MemoryRepository implements TrackerRepository {
   async saveAiSummary(summary: { short: string; long: string }) {
     this.summary = { short: summary.short, long: summary.long, updatedAt: istStamp() };
   }
+  async getSettings() { return Object.fromEntries(this.settings); }
+  async setSetting(key: string, value: string) { this.settings.set(key, value); }
 
   async addItem(item: NewItem) {
     const id = String(Math.max(0, ...this.items.map((i) => Number(i.id) || 0)) + 1);
@@ -74,8 +77,9 @@ export class MemoryRepository implements TrackerRepository {
   }
   async log(entry: NewLog) {
     const id = String(Math.max(0, ...this.logs.map((l) => Number(l.id) || 0)) + 1);
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? "") ? entry.date! : istToday();
     const created: LogEntry = {
-      id, itemId: entry.itemId, itemName: entry.itemName, date: istToday(),
+      id, itemId: entry.itemId, itemName: entry.itemName, date,
       done: entry.done, time: entry.time ?? "", notes: entry.notes ?? "",
     };
     this.logs.push(created);

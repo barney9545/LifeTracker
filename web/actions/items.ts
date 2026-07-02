@@ -3,9 +3,11 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { getRepository } from "@/lib/repository";
 import { getSession } from "@/lib/auth";
-import { parseItemForm, timeSchema, type ItemInput } from "@/lib/validation";
-import { istNowHHMM } from "@/lib/core/logic";
+import { parseItemForm, timeSchema, dateSchema, type ItemInput } from "@/lib/validation";
+import { istNowHHMM, istToday } from "@/lib/core/logic";
 import { REPO_TAGS } from "@/lib/data";
+import { previewDigest } from "@/lib/summary";
+import { z } from "zod";
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
 
@@ -23,6 +25,9 @@ function revalidateAll() {
   revalidatePath("/");
   revalidatePath("/manage");
   revalidatePath("/trends");
+  revalidatePath("/calendar");
+  // Day pages are dynamic + tag-backed, but revalidate the segment for good measure.
+  revalidatePath("/day/[date]", "page");
 }
 
 export async function markDone(itemId: string, itemName: string, time?: string): Promise<string> {
@@ -34,6 +39,29 @@ export async function markDone(itemId: string, itemName: string, time?: string):
   });
   revalidateAll();
   return entry.id; // returned so the UI can offer an instant undo
+}
+
+/**
+ * Retrospective logging: mark an item done for a specific (past or current) day.
+ * Rejects malformed and future dates. Returns the new log id so a MissedCard can
+ * hand off to a DoneCard (mirrors markDone).
+ */
+export async function logForDay(
+  itemId: string,
+  itemName: string,
+  dateISO: string,
+  time?: string,
+): Promise<string> {
+  await guard();
+  const d = dateSchema.safeParse(dateISO);
+  if (!d.success) throw new Error("Invalid date");
+  if (d.data > istToday()) throw new Error("Cannot log a future day");
+  const t = timeSchema.safeParse(time);
+  const entry = await getRepository().log({
+    itemId, itemName, done: true, date: d.data, time: t.success ? t.data : "",
+  });
+  revalidateAll();
+  return entry.id;
 }
 
 export async function undoDone(logId: string) {
@@ -104,4 +132,34 @@ export async function editItem(id: string, formData: FormData): Promise<ActionRe
   });
   revalidateAll();
   return { ok: true };
+}
+
+/* ---- Daily-summary prompt configuration (stored in the Sheet, no redeploy) ---- */
+
+const summaryConfigSchema = z.object({
+  prompt: z.string().trim().min(1, "Prompt is required"),
+  temperature: z.coerce.number().min(0, "Temperature must be 0–2").max(2, "Temperature must be 0–2"),
+});
+
+export async function saveSummaryConfig(prompt: string, temperature: number): Promise<ActionResult> {
+  await guard();
+  const parsed = summaryConfigSchema.safeParse({ prompt, temperature });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const repo = getRepository();
+  await repo.setSetting("summary_prompt", parsed.data.prompt);
+  await repo.setSetting("summary_temperature", String(parsed.data.temperature));
+  revalidateAll();
+  return { ok: true };
+}
+
+export type PreviewResult =
+  | { ok: true; short: string; long: string; message: string; debug: string }
+  | { ok: false; error: string };
+
+export async function previewSummary(prompt: string, temperature: number): Promise<PreviewResult> {
+  await guard();
+  const parsed = summaryConfigSchema.safeParse({ prompt, temperature });
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const out = await previewDigest(parsed.data.prompt, parsed.data.temperature);
+  return { ok: true, ...out };
 }
