@@ -18,6 +18,8 @@ export interface NewLog {
   done: boolean;
   time?: string;
   notes?: string;
+  /** ISO date (yyyy-mm-dd) to log against; defaults to IST today when omitted/invalid. */
+  date?: string;
 }
 
 export interface TrackerRepository {
@@ -29,6 +31,11 @@ export interface TrackerRepository {
   getAiSummary(): Promise<AiSummary | null>;
   /** Append a new AI summary (daily digest writes this so the Today page updates). */
   saveAiSummary(summary: { short: string; long: string }): Promise<void>;
+
+  /** Generic key/value app settings (e.g. tunable digest prompt), keyed by string. */
+  getSettings(): Promise<Record<string, string>>;
+  /** Upsert a single setting by key. */
+  setSetting(key: string, value: string): Promise<void>;
 
   addItem(item: NewItem): Promise<TrackableItem>;
   updateItem(id: string, patch: ItemPatch): Promise<void>;

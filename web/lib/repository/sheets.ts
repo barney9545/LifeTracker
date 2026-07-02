@@ -221,7 +221,8 @@ export class SheetsRepository implements TrackerRepository {
     const sheet = await this.tab("log");
     const rows = await sheet.getRows();
     const id = nextId(rows);
-    const date = istToday();
+    // Honour a caller-supplied date for retrospective logging; else stamp today (IST).
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? "") ? entry.date! : istToday();
     await sheet.addRow({
       id,
       date,
@@ -256,5 +257,41 @@ export class SheetsRepository implements TrackerRepository {
     if (!row) return;
     if (patch.time !== undefined) row.set("time_taken", patch.time);
     await row.save();
+  }
+
+  /** Ensure the `settings` (key,value) tab exists, creating it if missing. */
+  private async settingsTab() {
+    const doc = await this.doc();
+    let sheet = doc.sheetsByTitle["settings"];
+    if (!sheet) {
+      sheet = await doc.addSheet({ title: "settings", headerValues: ["key", "value"] });
+    }
+    return sheet;
+  }
+
+  async getSettings(): Promise<Record<string, string>> {
+    try {
+      const rows = await (await this.settingsTab()).getRows();
+      const out: Record<string, string> = {};
+      for (const r of rows) {
+        const k = String(r.get("key") ?? "").trim();
+        if (k) out[k] = String(r.get("value") ?? "");
+      }
+      return out;
+    } catch {
+      return {};
+    }
+  }
+
+  async setSetting(key: string, value: string): Promise<void> {
+    const sheet = await this.settingsTab();
+    const rows = await sheet.getRows();
+    const row = rows.find((r) => String(r.get("key")) === key);
+    if (row) {
+      row.set("value", value);
+      await row.save();
+    } else {
+      await sheet.addRow({ key, value });
+    }
   }
 }
