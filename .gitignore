@@ -19,3 +19,9 @@ digest.gs
 # Local-only secret scratch (Vercel env paste file)
 VERCEL_ENV.local.txt
 *.local.txt
+
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules

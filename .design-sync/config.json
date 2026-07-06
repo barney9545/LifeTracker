@@ -1,0 +1,5 @@
+{
+  "pkg": "@lifetracker/ui",
+  "shape": "package",
+  "cssEntry": "dist/styles.css"
+}
