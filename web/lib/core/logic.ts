@@ -199,6 +199,31 @@ export function complianceColor(pct: number): string {
   return "#f87171";
 }
 
+/* ------------------------------------------------------------------ */
+/* GitHub-contributions-style green heatmap scale (calendar + trends). */
+/* No red: missed / nothing-due read as neutral, adherence reads green. */
+/* ------------------------------------------------------------------ */
+
+/** Map a day's compliance % (or null = nothing due) to a 0–4 heat bucket. */
+export function heatLevel(pct: number | null): 0 | 1 | 2 | 3 | 4 {
+  if (pct === null || pct <= 0) return 0;
+  if (pct < 40) return 1;
+  if (pct < 70) return 2;
+  if (pct < 100) return 3;
+  return 4;
+}
+
+/** CSS colour for a heat bucket: neutral surface → shades of green. */
+export function heatColor(level: 0 | 1 | 2 | 3 | 4): string {
+  switch (level) {
+    case 1: return "rgba(34,197,94,0.25)";
+    case 2: return "rgba(34,197,94,0.45)";
+    case 3: return "rgba(34,197,94,0.70)";
+    case 4: return "#22c55e";
+    default: return "var(--c-surface-2)";
+  }
+}
+
 /**
  * Sort key helper for ordering by time of day (Morning→Anytime).
  * Tolerant of dirty sheet values: trims whitespace and matches
@@ -329,4 +354,52 @@ export function dayCompliance(
   const taken = b.taken.length;
   const pct = due > 0 ? Math.round((taken / due) * 100) : null;
   return { due, taken, pct };
+}
+
+/* ------------------------------------------------------------------ */
+/* Forward schedule projection (for tapping FUTURE calendar dates).     */
+/* Read-only: "if I keep taking things on schedule, what lands here?"   */
+/* ------------------------------------------------------------------ */
+
+/** The most recent "done" date for an item, or null if never taken. */
+function lastDoneDate(item: TrackableItem, logs: LogEntry[]): string | null {
+  let max: string | null = null;
+  for (const l of logs) {
+    if (l.itemName === item.name && l.done && (max === null || l.date > max)) max = l.date;
+  }
+  return max;
+}
+
+/**
+ * Whether an active item is projected to be due on a FUTURE date, phase-locked
+ * to its schedule anchor. anchor = latest of {last dose, resumedDate}, else the
+ * effective added date, else today. Due iff `dateISO` is a whole number of
+ * frequency intervals after the anchor. (Daily → every future day.)
+ */
+export function projectedDueOn(
+  item: TrackableItem,
+  logs: LogEntry[],
+  dateISO: string,
+): boolean {
+  const last = lastDoneDate(item, logs);
+  const resumed = /^\d{4}-\d{2}-\d{2}/.test(item.resumedDate ?? "")
+    ? item.resumedDate!.slice(0, 10)
+    : null;
+  const added = effectiveAdded(item, logs);
+  const candidates = [last, resumed, added].filter((d): d is string => d !== null);
+  const anchor = candidates.length ? candidates.reduce((mx, d) => (d > mx ? d : mx)) : istToday();
+  if (dateISO <= anchor) return false;
+  const freq = FREQ_DAYS[item.frequency] ?? 1;
+  return daysBetween(dateISO, anchor) % freq === 0;
+}
+
+/** Active items projected to be due on a future date, sorted by time of day. */
+export function projectedDueItems(
+  items: TrackableItem[],
+  logs: LogEntry[],
+  dateISO: string,
+): TrackableItem[] {
+  return items
+    .filter((it) => projectedDueOn(it, logs, dateISO))
+    .sort((a, b) => timeOfDayRank(a.timeOfDay) - timeOfDayRank(b.timeOfDay) || a.name.localeCompare(b.name));
 }
