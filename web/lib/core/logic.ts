@@ -87,12 +87,23 @@ export function daysBetween(aISO: string, bISO: string): number {
   return Math.round((a.getTime() - b.getTime()) / 86_400_000);
 }
 
-/** Matches app.py is_due: by item NAME, using the most recent "done" date. */
+/**
+ * Matches app.py is_due: by item NAME, using the most recent "done" date.
+ *
+ * Scheduling anchor = the later of {last dose, resumedDate}. Resuming a paused
+ * item restarts its schedule from the resume day, so it becomes due again only
+ * after a full frequency interval elapses — not instantly (issue #8). Brand-new
+ * items (never taken) are always due.
+ */
 export function isDue(item: TrackableItem, logs: LogEntry[]): boolean {
   const taken = logs.filter((l) => l.itemName === item.name && l.done);
   if (taken.length === 0) return true;
   const last = taken.reduce((mx, l) => (l.date > mx ? l.date : mx), taken[0].date);
-  return daysBetween(istToday(), last) >= (FREQ_DAYS[item.frequency] ?? 1);
+  const resumed = /^\d{4}-\d{2}-\d{2}/.test(item.resumedDate ?? "")
+    ? item.resumedDate!.slice(0, 10)
+    : null;
+  const anchor = resumed && resumed > last ? resumed : last;
+  return daysBetween(istToday(), anchor) >= (FREQ_DAYS[item.frequency] ?? 1);
 }
 
 /** Matches app.py already_logged_today: by item ID, today, done. */
@@ -188,9 +199,20 @@ export function complianceColor(pct: number): string {
   return "#f87171";
 }
 
-/** Sort key helper for ordering by time of day (Morning→Anytime). */
+/**
+ * Sort key helper for ordering by time of day (Morning→Anytime).
+ * Tolerant of dirty sheet values: trims whitespace and matches
+ * case-insensitively, so " morning" / "Evening " still rank into the right
+ * slot instead of silently sinking to the bottom (issue #7).
+ */
 export function timeOfDayRank(tod: string): number {
-  return TIME_ORDER[tod] ?? 4;
+  const key = (tod ?? "").trim();
+  if (key in TIME_ORDER) return TIME_ORDER[key];
+  const lower = key.toLowerCase();
+  for (const k of Object.keys(TIME_ORDER)) {
+    if (k && k.toLowerCase() === lower) return TIME_ORDER[k];
+  }
+  return 4;
 }
 
 /* ------------------------------------------------------------------ */

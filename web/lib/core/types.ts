@@ -23,6 +23,10 @@ export interface TrackableItem {
   /** ISO date the item was added; used as the start of the compliance window.
    *  May be "" for legacy rows — callers fall back to the earliest log date. */
   addedDate: string;
+  /** ISO date the item was last resumed after a pause. Used only as a scheduling
+   *  anchor in `isDue` so a resumed item isn't instantly due; does NOT affect the
+   *  compliance window or calendar history. "" / absent when never paused. */
+  resumedDate?: string;
   /** Tracker-specific fields, e.g. supplements: dosage, unit, category, bestTakenWith. */
   meta: Record<string, string>;
 }

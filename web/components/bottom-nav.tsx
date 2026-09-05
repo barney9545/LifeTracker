@@ -29,8 +29,8 @@ function ChartIcon() {
 }
 
 const ITEMS = [
-  { href: "/", label: "Today", icon: HomeIcon },
   { href: "/manage", label: "Manage", icon: PillIcon },
+  { href: "/", label: "Home", icon: HomeIcon },
   { href: "/trends", label: "Trends", icon: ChartIcon },
 ];
 
