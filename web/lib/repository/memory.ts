@@ -70,7 +70,11 @@ export class MemoryRepository implements TrackerRepository {
     const it = this.items.find((i) => i.id === id);
     if (!it) return;
     it.active = active;
-    if (active && !it.addedDate) it.addedDate = istToday();
+    if (active) {
+      if (!it.addedDate) it.addedDate = istToday();
+      // Schedule anchor so a resumed item isn't instantly due (issue #8).
+      it.resumedDate = istToday();
+    }
   }
   async deleteItem(id: string) {
     this.items = this.items.filter((i) => i.id !== id);

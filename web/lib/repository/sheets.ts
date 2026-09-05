@@ -52,6 +52,7 @@ function rowToItem(r: GoogleSpreadsheetRow): TrackableItem {
     timeOfDay: (String(r.get("time_of_day") ?? "Anytime") || "Anytime") as TimeOfDay,
     notes: String(r.get("notes") ?? ""),
     addedDate: String(r.get("added_date") ?? ""),
+    resumedDate: String(r.get("resumed_date") ?? ""),
     meta: {
       category: String(r.get("category") ?? ""),
       dosage: String(r.get("dosage") ?? ""),
@@ -198,14 +199,22 @@ export class SheetsRepository implements TrackerRepository {
 
   async setActive(id: string, active: boolean): Promise<void> {
     const sheet = await this.tab("supplements");
-    if (active) await this.ensureColumn(sheet, "added_date");
+    if (active) {
+      await this.ensureColumn(sheet, "added_date");
+      await this.ensureColumn(sheet, "resumed_date");
+    }
     const rows = await sheet.getRows();
     const row = rows.find((r) => String(r.get("id")) === String(id));
     if (!row) return;
     row.set("active", active ? "TRUE" : "FALSE");
-    // Stamp the activation date the first time it's made active.
-    if (active && !String(row.get("added_date") ?? "").trim()) {
-      row.set("added_date", istToday());
+    if (active) {
+      // Stamp the activation date the first time it's made active.
+      if (!String(row.get("added_date") ?? "").trim()) {
+        row.set("added_date", istToday());
+      }
+      // Anchor the schedule to the resume day so a resumed item isn't instantly
+      // due (issue #8). Leaves added_date — and thus compliance/calendar — intact.
+      row.set("resumed_date", istToday());
     }
     await row.save();
   }

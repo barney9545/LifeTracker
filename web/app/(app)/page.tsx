@@ -26,7 +26,11 @@ export default async function TodayPage() {
 
   const active = items
     .filter((i) => i.active)
-    .sort((a, b) => timeOfDayRank(a.timeOfDay) - timeOfDayRank(b.timeOfDay));
+    .sort(
+      (a, b) =>
+        timeOfDayRank(a.timeOfDay) - timeOfDayRank(b.timeOfDay) ||
+        a.name.localeCompare(b.name),
+    );
 
   const due = [], done = [], notDue = [];
   for (const s of active) {
