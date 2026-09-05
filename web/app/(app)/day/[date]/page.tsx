@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getItems, getLogs } from "@/lib/data";
-import { dayBuckets, dayCompliance, istToday, timeOfDayRank } from "@/lib/core/logic";
+import {
+  dayBuckets, dayCompliance, istToday, projectedDueItems, timeOfDayRank,
+} from "@/lib/core/logic";
 import { supplementsTracker as T } from "@/lib/trackers/supplements";
-import { SectionLabel } from "@/components/ui";
+import { SectionLabel, todColor } from "@/components/ui";
 import DoneCard from "@/components/done-card";
 import MissedCard from "@/components/missed-card";
 
@@ -17,24 +19,92 @@ function shiftISO(iso: string, delta: number): string {
 export default async function DayPage({ params }: { params: Promise<{ date: string }> }) {
   const { date } = await params;
   const today = istToday();
-  // Validate: well-formed YYYY-MM-DD and not in the future.
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today) notFound();
+  // Allow up to a year ahead (future days show a projected schedule); reject
+  // malformed or absurd dates.
+  const maxDate = shiftISO(today, 366);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date < "2000-01-01" || date > maxDate) notFound();
+
+  const isFuture = date > today;
 
   const [items, logs] = await Promise.all([getItems(), getLogs(365)]);
   const active = items
     .filter((i) => i.active)
-    .sort((a, b) => timeOfDayRank(a.timeOfDay) - timeOfDayRank(b.timeOfDay));
-
-  const buckets = dayBuckets(active, logs, date);
-  const { due, taken, pct } = dayCompliance(active, logs, date);
+    .sort((a, b) => timeOfDayRank(a.timeOfDay) - timeOfDayRank(b.timeOfDay) || a.name.localeCompare(b.name));
 
   const dateLabel = new Date(date + "T00:00:00").toLocaleDateString("en-GB", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
   const prev = shiftISO(date, -1);
   const next = shiftISO(date, 1);
-  const hasNext = next <= today;
+  const hasNext = next <= maxDate;
 
+  const navButtons = (
+    <div className="flex shrink-0 gap-1.5">
+      <Link href={`/day/${prev}`} aria-label="Previous day"
+        className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-2)] text-[14px] text-[var(--c-text)] transition active:scale-90">
+        ◀
+      </Link>
+      {hasNext ? (
+        <Link href={`/day/${next}`} aria-label="Next day"
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-2)] text-[14px] text-[var(--c-text)] transition active:scale-90">
+          ▶
+        </Link>
+      ) : (
+        <span aria-hidden
+          className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-2)] text-[14px] text-[var(--c-muted)] opacity-30">
+          ▶
+        </span>
+      )}
+    </div>
+  );
+
+  // ---- Future day: read-only projected schedule ---------------------------
+  if (isFuture) {
+    const scheduled = projectedDueItems(active, logs, date);
+    return (
+      <>
+        <header className="flex items-center justify-between pb-5">
+          <div className="min-w-0">
+            <Link href="/calendar" className="text-[13px] text-[var(--c-accent)]">← Calendar</Link>
+            <h1 className="truncate text-[20px] font-semibold tracking-tight text-[var(--c-text)]">{dateLabel}</h1>
+            <p className="mt-0.5 text-[12px] text-[var(--c-muted)]">
+              {scheduled.length > 0 ? `${scheduled.length} scheduled · upcoming` : "Nothing scheduled"}
+            </p>
+          </div>
+          {navButtons}
+        </header>
+
+        {scheduled.length > 0 ? (
+          <>
+            <SectionLabel>Scheduled</SectionLabel>
+            <div className="flex flex-col gap-2.5">
+              {scheduled.map((s) => (
+                <div key={s.id}
+                  className="flex items-center gap-3 rounded-2xl border border-dashed border-[var(--c-border)] bg-[var(--c-surface)] p-3.5">
+                  <span className="h-9 w-1 shrink-0 rounded-full" style={{ background: todColor(s.timeOfDay) }} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[15px] font-medium text-[var(--c-text)]">{s.name}</div>
+                    <p className="mt-0.5 truncate text-[12px] text-[var(--c-muted)]">{T.detail(s)} · {s.frequency}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-[11px] text-[var(--c-muted)]">
+              Projected from your current schedule — nothing to mark yet.
+            </p>
+          </>
+        ) : (
+          <div className="mt-8 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-6 text-center text-[14px] text-[var(--c-text)]">
+            Nothing scheduled for this day.
+          </div>
+        )}
+      </>
+    );
+  }
+
+  // ---- Past / today: historical taken/missed view -------------------------
+  const buckets = dayBuckets(active, logs, date);
+  const { due, taken, pct } = dayCompliance(active, logs, date);
   const nothing = buckets.taken.length === 0 && buckets.missed.length === 0;
 
   return (
@@ -47,23 +117,7 @@ export default async function DayPage({ params }: { params: Promise<{ date: stri
             {due > 0 ? `${taken}/${due} taken · ${pct}%` : "Nothing was due"}
           </p>
         </div>
-        <div className="flex shrink-0 gap-1.5">
-          <Link href={`/day/${prev}`} aria-label="Previous day"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-2)] text-[14px] text-[var(--c-text)] transition active:scale-90">
-            ◀
-          </Link>
-          {hasNext ? (
-            <Link href={`/day/${next}`} aria-label="Next day"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-2)] text-[14px] text-[var(--c-text)] transition active:scale-90">
-              ▶
-            </Link>
-          ) : (
-            <span aria-hidden
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-2)] text-[14px] text-[var(--c-muted)] opacity-30">
-              ▶
-            </span>
-          )}
-        </div>
+        {navButtons}
       </header>
 
       {buckets.taken.length > 0 && (

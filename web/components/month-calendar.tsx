@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { LogEntry, TrackableItem } from "@/lib/core/types";
-import { complianceColor, dayCompliance, istToday } from "@/lib/core/logic";
+import { dayCompliance, heatColor, heatLevel, istToday } from "@/lib/core/logic";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -44,22 +44,23 @@ export default function MonthCalendar({
           const dateISO = iso(y, m0, d);
           const future = dateISO > today;
           if (future) {
+            // Tappable: opens the read-only projected "what's scheduled" view.
             return (
-              <div key={dateISO}
-                className="flex aspect-square items-center justify-center rounded-lg border border-[var(--c-border)] text-[13px] text-[var(--c-muted)] opacity-30">
+              <Link key={dateISO} href={`/day/${dateISO}`}
+                aria-label={`${dateISO} — upcoming`}
+                className="flex aspect-square items-center justify-center rounded-lg border border-dashed border-[var(--c-border)] text-[13px] text-[var(--c-muted)] opacity-60 transition active:scale-90">
                 {d}
-              </div>
+              </Link>
             );
           }
           const { pct } = dayCompliance(items, logs, dateISO);
-          // Neutral surface when nothing was due (or before any item existed).
-          const bg = pct === null ? "var(--c-surface-2)" : complianceColor(pct);
-          const ink = pct === null ? "var(--c-muted)" : "#04130c";
+          const level = heatLevel(pct);
+          const ink = level >= 3 ? "#04130c" : level === 0 ? "var(--c-muted)" : "var(--c-text)";
           return (
             <Link key={dateISO} href={`/day/${dateISO}`}
               aria-label={`${dateISO}${pct === null ? "" : ` — ${pct}%`}`}
               className="flex aspect-square items-center justify-center rounded-lg border border-[var(--c-border)] text-[13px] font-medium transition active:scale-90"
-              style={{ background: bg, color: ink }}>
+              style={{ background: heatColor(level), color: ink }}>
               {d}
             </Link>
           );

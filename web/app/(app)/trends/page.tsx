@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getItems, getLogs, getAiSummary } from "@/lib/data";
 import {
   complianceColor, complianceDays, computeStreak, streakLabel,
-  dayBuckets, dayCompliance, daysAgoISO, istToday, timeOfDayRank,
+  dayBuckets, dayCompliance, daysAgoISO, heatColor, heatLevel, istToday, timeOfDayRank,
 } from "@/lib/core/logic";
 import { signOut } from "@/lib/auth";
 import { supplementsTracker as T } from "@/lib/trackers/supplements";
@@ -10,9 +10,28 @@ import { SectionLabel } from "@/components/ui";
 import Tabs from "@/components/tabs";
 import DoneCard from "@/components/done-card";
 import MissedCard from "@/components/missed-card";
+import YearHeatmap, { type HeatDay } from "@/components/year-heatmap";
 import type { LogEntry, TrackableItem } from "@/lib/core/types";
 
 export const dynamic = "force-dynamic";
+
+/** Add days to a yyyy-mm-dd string (UTC-safe). */
+function shiftISO(iso: string, delta: number): string {
+  return new Date(Date.parse(iso + "T00:00:00Z") + delta * 86_400_000).toISOString().slice(0, 10);
+}
+
+/** The current calendar year as an ordered list of days with heat levels. */
+function yearHeatDays(active: TrackableItem[], logs: LogEntry[], today: string): HeatDay[] {
+  const yr = today.slice(0, 4);
+  const end = `${yr}-12-31`;
+  const out: HeatDay[] = [];
+  for (let d = `${yr}-01-01`; d <= end; d = shiftISO(d, 1)) {
+    const future = d > today;
+    const level = future ? 0 : heatLevel(dayCompliance(active, logs, d).pct);
+    out.push({ date: d, level, future });
+  }
+  return out;
+}
 
 /** Build the "History" list: one section per recent day back to the earliest addedDate. */
 function historyDays(items: TrackableItem[], logs: LogEntry[]): string[] {
@@ -48,6 +67,9 @@ export default async function TrendsPage() {
     .filter((i) => i.active)
     .sort((a, b) => timeOfDayRank(a.timeOfDay) - timeOfDayRank(b.timeOfDay));
 
+  const today = istToday();
+  const heatDays = yearHeatDays(active, logs, today);
+
   const comp = active
     .map((i) => ({ name: i.name, ...complianceDays(i, logs) }))
     .sort((a, b) => b.pct - a.pct);
@@ -64,6 +86,20 @@ export default async function TrendsPage() {
       </div>
     ) : (
       <>
+          <SectionLabel>This year</SectionLabel>
+          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
+            <YearHeatmap days={heatDays} today={today} />
+            <div className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--c-muted)]">
+              <span>Less</span>
+              {([0, 1, 2, 3, 4] as const).map((lvl) => (
+                <span key={lvl} className="h-2.5 w-2.5 rounded-[3px] border border-[var(--c-border)]"
+                  style={{ background: heatColor(lvl) }} />
+              ))}
+              <span>More</span>
+              <span className="ml-auto">tap a day</span>
+            </div>
+          </div>
+
           <SectionLabel>30-day compliance</SectionLabel>
           <div className="flex flex-col gap-2.5 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
             {comp.map((c) => (
