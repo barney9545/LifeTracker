@@ -60,7 +60,13 @@ export default async function DayPage({ params }: { params: Promise<{ date: stri
 
   // ---- Future day: read-only projected schedule ---------------------------
   if (isFuture) {
-    const scheduled = projectedDueItems(active, logs, date);
+    // Include items paused with a scheduled resume: by a future date on/after
+    // their resume_on they'll be back on schedule. projectedDueOn only counts
+    // them from resume_on onward, so earlier future days correctly exclude them.
+    const projectable = items.filter(
+      (i) => i.active || /^\d{4}-\d{2}-\d{2}/.test(i.resumeOn ?? ""),
+    );
+    const scheduled = projectedDueItems(projectable, logs, date);
     return (
       <>
         <header className="flex items-center justify-between pb-5">
