@@ -4,6 +4,7 @@ import { dueForSlot, reminderMessage, SLOTS, type Slot } from "@/lib/reminders";
 import { runDailyDigest } from "@/lib/summary";
 import { sendTelegram } from "@/lib/notify";
 import { istHour } from "@/lib/core/logic";
+import { applyScheduledResumes } from "@/lib/schedule";
 import { REPO_TAGS } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
@@ -37,20 +38,30 @@ export async function GET(req: NextRequest) {
   const param = req.nextUrl.searchParams.get("do");
   const action: Action = (ACTIONS.includes(param ?? "") ? param : autoAction()) as Action;
 
+  // Every run: wake any paused supplements whose scheduled resume date has arrived.
+  // Runs before the action so freshly-activated items are included in reminders.
+  let resumed: string[] = [];
+  try {
+    resumed = await applyScheduledResumes();
+    if (resumed.length) revalidateTag(REPO_TAGS.items, { expire: 0 });
+  } catch {
+    /* non-fatal: don't block reminders/digest if this errors */
+  }
+
   try {
     if (action === "summary") {
       const { short, items, debug } = await runDailyDigest();
       revalidateTag(REPO_TAGS.ai, { expire: 0 }); // refresh the Today page insight
-      return Response.json({ action, sent: items > 0, items, short, debug });
+      return Response.json({ action, resumed, sent: items > 0, items, short, debug });
     }
 
     const items = await dueForSlot(action);
     if (items.length === 0) {
-      return Response.json({ action, sent: false, due: 0 });
+      return Response.json({ action, resumed, sent: false, due: 0 });
     }
     await sendTelegram(reminderMessage(action, items));
-    return Response.json({ action, sent: true, due: items.length, items: items.map((i) => i.name) });
+    return Response.json({ action, resumed, sent: true, due: items.length, items: items.map((i) => i.name) });
   } catch (e) {
-    return Response.json({ action, error: (e as Error).message }, { status: 500 });
+    return Response.json({ action, resumed, error: (e as Error).message }, { status: 500 });
   }
 }

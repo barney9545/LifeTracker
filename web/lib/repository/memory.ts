@@ -70,11 +70,25 @@ export class MemoryRepository implements TrackerRepository {
     const it = this.items.find((i) => i.id === id);
     if (!it) return;
     it.active = active;
+    it.resumeOn = ""; // resume-now / cancel-schedule drops any pending schedule
     if (active) {
       if (!it.addedDate) it.addedDate = istToday();
       // Schedule anchor so a resumed item isn't instantly due (issue #8).
       it.resumedDate = istToday();
     }
+  }
+  async scheduleResume(id: string, dateISO: string) {
+    const it = this.items.find((i) => i.id === id);
+    if (!it) return;
+    it.active = false;
+    it.resumeOn = dateISO;
+  }
+  async resumeScheduled(id: string) {
+    const it = this.items.find((i) => i.id === id);
+    if (!it) return;
+    // Activate but KEEP resumeOn — it is now the schedule's start day (isDue).
+    it.active = true;
+    if (!it.addedDate) it.addedDate = istToday();
   }
   async deleteItem(id: string) {
     this.items = this.items.filter((i) => i.id !== id);

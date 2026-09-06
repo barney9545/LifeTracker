@@ -39,7 +39,14 @@ export interface TrackerRepository {
 
   addItem(item: NewItem): Promise<TrackableItem>;
   updateItem(id: string, patch: ItemPatch): Promise<void>;
+  /** Activate/pause immediately. Resuming stamps `resumed_date = today`; either
+   *  direction clears any pending `resume_on` (resume-now / cancel-schedule). */
   setActive(id: string, active: boolean): Promise<void>;
+  /** Pause the item and schedule it to auto-resume on `dateISO` (kept hidden until then). */
+  scheduleResume(id: string, dateISO: string): Promise<void>;
+  /** Cron only: activate a scheduled item, KEEPING `resume_on` as its cycle start
+   *  (that day becomes the first due day; pre-pause doses are ignored by isDue). */
+  resumeScheduled(id: string): Promise<void>;
   deleteItem(id: string): Promise<void>;
 
   /** Record that an item was done (or skipped). Returns the created entry. */

@@ -27,6 +27,10 @@ export interface TrackableItem {
    *  anchor in `isDue` so a resumed item isn't instantly due; does NOT affect the
    *  compliance window or calendar history. "" / absent when never paused. */
   resumedDate?: string;
+  /** ISO date this (paused) item is scheduled to auto-resume. While set, the item
+   *  stays `active:false` (hidden) until a daily cron reaches the date, activates
+   *  it, and makes that date its first dose day. "" / absent when not scheduled. */
+  resumeOn?: string;
   /** Tracker-specific fields, e.g. supplements: dosage, unit, category, bestTakenWith. */
   meta: Record<string, string>;
 }
