@@ -96,14 +96,28 @@ export function daysBetween(aISO: string, bISO: string): number {
  * items (never taken) are always due.
  */
 export function isDue(item: TrackableItem, logs: LogEntry[]): boolean {
+  const freq = FREQ_DAYS[item.frequency] ?? 1;
+  const today = istToday();
   const taken = logs.filter((l) => l.itemName === item.name && l.done);
+
+  // Scheduled resume (issue #14): once a scheduled item is activated, `resumeOn`
+  // stays set as the cycle's start — that day IS a due day, and doses from before
+  // it (pre-pause history) are ignored so it starts fresh on the chosen weekday.
+  const start = /^\d{4}-\d{2}-\d{2}/.test(item.resumeOn ?? "") ? item.resumeOn!.slice(0, 10) : null;
+  if (start) {
+    const relevant = taken.filter((l) => l.date >= start);
+    if (relevant.length === 0) return today >= start;
+    const last = relevant.reduce((mx, l) => (l.date > mx ? l.date : mx), relevant[0].date);
+    return daysBetween(today, last) >= freq;
+  }
+
   if (taken.length === 0) return true;
   const last = taken.reduce((mx, l) => (l.date > mx ? l.date : mx), taken[0].date);
   const resumed = /^\d{4}-\d{2}-\d{2}/.test(item.resumedDate ?? "")
     ? item.resumedDate!.slice(0, 10)
     : null;
   const anchor = resumed && resumed > last ? resumed : last;
-  return daysBetween(istToday(), anchor) >= (FREQ_DAYS[item.frequency] ?? 1);
+  return daysBetween(today, anchor) >= freq;
 }
 
 /** Matches app.py already_logged_today: by item ID, today, done. */
@@ -381,6 +395,12 @@ export function projectedDueOn(
   logs: LogEntry[],
   dateISO: string,
 ): boolean {
+  const freq = FREQ_DAYS[item.frequency] ?? 1;
+  // A scheduled-resume item (issue #14) projects from its resume date's phase.
+  const start = /^\d{4}-\d{2}-\d{2}/.test(item.resumeOn ?? "") ? item.resumeOn!.slice(0, 10) : null;
+  if (start) {
+    return dateISO >= start && daysBetween(dateISO, start) % freq === 0;
+  }
   const last = lastDoneDate(item, logs);
   const resumed = /^\d{4}-\d{2}-\d{2}/.test(item.resumedDate ?? "")
     ? item.resumedDate!.slice(0, 10)
@@ -389,7 +409,6 @@ export function projectedDueOn(
   const candidates = [last, resumed, added].filter((d): d is string => d !== null);
   const anchor = candidates.length ? candidates.reduce((mx, d) => (d > mx ? d : mx)) : istToday();
   if (dateISO <= anchor) return false;
-  const freq = FREQ_DAYS[item.frequency] ?? 1;
   return daysBetween(dateISO, anchor) % freq === 0;
 }
 

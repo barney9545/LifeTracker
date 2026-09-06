@@ -53,6 +53,7 @@ function rowToItem(r: GoogleSpreadsheetRow): TrackableItem {
     notes: String(r.get("notes") ?? ""),
     addedDate: String(r.get("added_date") ?? ""),
     resumedDate: String(r.get("resumed_date") ?? ""),
+    resumeOn: String(r.get("resume_on") ?? ""),
     meta: {
       category: String(r.get("category") ?? ""),
       dosage: String(r.get("dosage") ?? ""),
@@ -199,6 +200,7 @@ export class SheetsRepository implements TrackerRepository {
 
   async setActive(id: string, active: boolean): Promise<void> {
     const sheet = await this.tab("supplements");
+    await this.ensureColumn(sheet, "resume_on");
     if (active) {
       await this.ensureColumn(sheet, "added_date");
       await this.ensureColumn(sheet, "resumed_date");
@@ -207,6 +209,8 @@ export class SheetsRepository implements TrackerRepository {
     const row = rows.find((r) => String(r.get("id")) === String(id));
     if (!row) return;
     row.set("active", active ? "TRUE" : "FALSE");
+    // Resuming now, or pausing indefinitely, both drop any pending schedule.
+    row.set("resume_on", "");
     if (active) {
       // Stamp the activation date the first time it's made active.
       if (!String(row.get("added_date") ?? "").trim()) {
@@ -216,6 +220,31 @@ export class SheetsRepository implements TrackerRepository {
       // due (issue #8). Leaves added_date — and thus compliance/calendar — intact.
       row.set("resumed_date", istToday());
     }
+    await row.save();
+  }
+
+  async scheduleResume(id: string, dateISO: string): Promise<void> {
+    const sheet = await this.tab("supplements");
+    await this.ensureColumn(sheet, "resume_on");
+    const rows = await sheet.getRows();
+    const row = rows.find((r) => String(r.get("id")) === String(id));
+    if (!row) return;
+    // Keep it paused/hidden; the cron activates it on the scheduled date.
+    row.set("active", "FALSE");
+    row.set("resume_on", dateISO);
+    await row.save();
+  }
+
+  async resumeScheduled(id: string): Promise<void> {
+    const sheet = await this.tab("supplements");
+    await this.ensureColumn(sheet, "added_date");
+    await this.ensureColumn(sheet, "resume_on");
+    const rows = await sheet.getRows();
+    const row = rows.find((r) => String(r.get("id")) === String(id));
+    if (!row) return;
+    // Activate but KEEP resume_on — it is now the schedule's start day (isDue).
+    row.set("active", "TRUE");
+    if (!String(row.get("added_date") ?? "").trim()) row.set("added_date", istToday());
     await row.save();
   }
 

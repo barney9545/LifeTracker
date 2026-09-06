@@ -85,6 +85,17 @@ export async function toggleActive(id: string, active: boolean) {
   revalidateAll();
 }
 
+/** Pause an item and schedule it to auto-resume on `dateISO` (must be a future day). */
+export async function scheduleResume(id: string, dateISO: string): Promise<ActionResult> {
+  await guard();
+  const d = dateSchema.safeParse(dateISO);
+  if (!d.success) return { ok: false, error: "Invalid date" };
+  if (d.data <= istToday()) return { ok: false, error: "Pick a future date" };
+  await getRepository().scheduleResume(id, d.data);
+  revalidateAll();
+  return { ok: true };
+}
+
 export async function removeItem(id: string) {
   await guard();
   await getRepository().deleteItem(id);
