@@ -20,15 +20,17 @@ function shiftISO(iso: string, delta: number): string {
   return new Date(Date.parse(iso + "T00:00:00Z") + delta * 86_400_000).toISOString().slice(0, 10);
 }
 
-/** The current calendar year as an ordered list of days with heat levels. */
-function yearHeatDays(active: TrackableItem[], logs: LogEntry[], today: string): HeatDay[] {
-  const yr = today.slice(0, 4);
-  const end = `${yr}-12-31`;
+/**
+ * A trailing 52 weeks ending today, as an ordered list of days with heat levels
+ * (GitHub-style). Starts on the Monday 52 weeks before the current week, so the
+ * grid is Monday-aligned with ~53 columns and no empty future cells.
+ */
+function trailingHeatDays(active: TrackableItem[], logs: LogEntry[], today: string): HeatDay[] {
+  const dow = (new Date(today + "T00:00:00Z").getUTCDay() + 6) % 7; // Mon=0..Sun=6
+  const start = shiftISO(shiftISO(today, -dow), -52 * 7); // Monday, 52 weeks back
   const out: HeatDay[] = [];
-  for (let d = `${yr}-01-01`; d <= end; d = shiftISO(d, 1)) {
-    const future = d > today;
-    const level = future ? 0 : heatLevel(dayCompliance(active, logs, d).pct);
-    out.push({ date: d, level, future });
+  for (let d = start; d <= today; d = shiftISO(d, 1)) {
+    out.push({ date: d, level: heatLevel(dayCompliance(active, logs, d).pct), future: false });
   }
   return out;
 }
@@ -68,7 +70,7 @@ export default async function TrendsPage() {
     .sort((a, b) => timeOfDayRank(a.timeOfDay) - timeOfDayRank(b.timeOfDay));
 
   const today = istToday();
-  const heatDays = yearHeatDays(active, logs, today);
+  const heatDays = trailingHeatDays(active, logs, today);
 
   const comp = active
     .map((i) => ({ name: i.name, ...complianceDays(i, logs) }))
@@ -86,7 +88,7 @@ export default async function TrendsPage() {
       </div>
     ) : (
       <>
-          <SectionLabel>This year</SectionLabel>
+          <SectionLabel>Last 52 weeks</SectionLabel>
           <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
             <YearHeatmap days={heatDays} today={today} />
             <div className="mt-2 flex items-center gap-1.5 text-[10px] text-[var(--c-muted)]">
