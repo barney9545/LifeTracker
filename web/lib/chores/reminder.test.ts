@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { LogEntry } from "../core/types";
+import { applyMove, outstandingDates } from "./logic";
 import { buildNightlyReminder, formatChoreReminderTelegram, isReminderEmpty, shortDate } from "./reminder";
 import { SEED_CHORES, SEED_START } from "./seed";
-import type { Chore } from "./types";
+import type { Chore, StoredChoreMove } from "./types";
 
 // Seeded chores as the store would hold them (ids c1…c6, all starting Mon 19 Oct).
 const CHORES: Chore[] = SEED_CHORES.map((c, i) => ({ ...c, id: `c${i + 1}`, addedDate: SEED_START }));
@@ -142,4 +143,71 @@ test("formatter: stays short — one line per chore plus headers", () => {
   const lines = formatChoreReminderTelegram(r).split("\n");
   assert.equal(lines.length, 1 + r.tomorrow.length + 2 + r.overdue.length);
   assert.ok(lines.every((l) => l.length <= 60));
+});
+
+/* ---- one-off moves ---- */
+
+const mv = (name: string, fromDate: string, toDate: string): StoredChoreMove => ({ choreId: byName(name).id, fromDate, toDate });
+/** Everything done through Thu 22 (week A). */
+const CAUGHT_UP_THU = [
+  done("Laundry", "2026-10-22"),
+  done("Wash bottle", "2026-10-22"),
+  done("Trim nails", "2026-10-20"),
+  done("Clean beard", "2026-10-20"),
+  done(BED, "2026-10-21"),
+];
+
+test("moves: a chore moved onto tomorrow is listed for tomorrow", () => {
+  const moves = [mv("Laundry", "2026-10-26", "2026-10-24")]; // next Mon → Sat
+  assert.equal(isReminderEmpty(buildNightlyReminder(CHORES, CAUGHT_UP_THU, "2026-10-23")), true);
+  const r = buildNightlyReminder(CHORES, CAUGHT_UP_THU, "2026-10-23", moves);
+  assert.equal(r.date, "2026-10-24");
+  assert.deepEqual(r.tomorrow.map((t) => [t.chore.name, t.overdueSince]), [["Laundry", null]]);
+  assert.deepEqual(r.overdue, []);
+  assert.equal(formatChoreReminderTelegram(r), "🧹 <b>Tomorrow · Sat 24 Oct</b>\n• Laundry");
+  // …and it's gone from its original Monday.
+  const sun = buildNightlyReminder(CHORES, [...CAUGHT_UP_THU, done("Laundry", "2026-10-24")], "2026-10-25", moves);
+  assert.deepEqual(names(sun.tomorrow), ["Wash bottle"]);
+  assert.deepEqual(sun.overdue, []);
+});
+
+test("moves: a chore moved away from tomorrow is not listed", () => {
+  const moves = [mv("Laundry", "2026-10-19", "2026-10-20")]; // Mon → Tue
+  const sun = buildNightlyReminder(CHORES, [], "2026-10-18", moves);
+  assert.deepEqual(names(sun.tomorrow), ["Wash bottle"]);
+  assert.deepEqual(sun.overdue, []);
+  // Monday night: not overdue (it isn't Monday's any more), listed for Tuesday instead.
+  const mon = buildNightlyReminder(CHORES, [done("Wash bottle", "2026-10-19")], "2026-10-19", moves);
+  assert.deepEqual(mon.tomorrow.map((t) => [t.chore.name, t.overdueSince]), [
+    ["Clean beard", null],
+    ["Laundry", null],
+    ["Trim nails", null],
+  ]);
+  assert.deepEqual(mon.overdue, []);
+});
+
+test("moves: an overdue chore rescheduled to a later date is no longer overdue", () => {
+  const logs = CAUGHT_UP_THU.filter((l) => l.itemName !== "Laundry"); // Laundry missed Mon + Thu
+  const before = buildNightlyReminder(CHORES, logs, "2026-10-23");
+  assert.deepEqual(overdueOf(before), [["Laundry", "2026-10-19"]]);
+
+  const pending = outstandingDates(byName("Laundry"), logs, "2026-10-23");
+  assert.deepEqual(pending, ["2026-10-19", "2026-10-22"]);
+  const toSun = applyMove([], pending, "2026-10-25").map((m) => ({ choreId: byName("Laundry").id, ...m }));
+  const r = buildNightlyReminder(CHORES, logs, "2026-10-23", toSun);
+  assert.deepEqual(r.tomorrow, []);
+  assert.deepEqual(r.overdue, []);
+  assert.equal(isReminderEmpty(r), true);
+
+  // Rescheduled to tomorrow: listed for tomorrow, not flagged overdue.
+  const toSat = applyMove([], pending, "2026-10-24").map((m) => ({ choreId: byName("Laundry").id, ...m }));
+  const r2 = buildNightlyReminder(CHORES, logs, "2026-10-23", toSat);
+  assert.deepEqual(r2.tomorrow.map((t) => [t.chore.name, t.overdueSince]), [["Laundry", null]]);
+  assert.deepEqual(r2.overdue, []);
+});
+
+test("moves: another chore's moves don't affect the rest", () => {
+  const moves = [mv("Wash bottle", "2026-10-19", "2026-10-23")];
+  const r = buildNightlyReminder(CHORES, [], "2026-10-18", moves);
+  assert.deepEqual(names(r.tomorrow), ["Laundry"]);
 });

@@ -1,36 +1,46 @@
 import Link from "next/link";
-import { getChores, getChoreLogs } from "@/lib/data";
+import { getChores, getChoreLogs, getChoreMoves, getChoreCapacity } from "@/lib/data";
 import { istToday } from "@/lib/core/logic";
 import {
-  CHORE_LOG_DAYS, addDaysISO, choresDueOn, choresForDay, describeSchedule,
+  CHORE_LOG_DAYS, addDaysISO, choresDueOn, choresForDay, describeSchedule, movedFrom, outstandingDates,
 } from "@/lib/chores/logic";
+import type { Chore } from "@/lib/chores/types";
 import { SectionLabel } from "./ui";
-import ChoreDueCard from "./chore-due-card";
 import ChoreDoneCard from "./chore-done-card";
 import CollapsiblePanel from "./collapsible-panel";
 import PopupButton, { InfoIcon } from "./popup-button";
 import ProgressCard from "./progress-card";
-
-/** "Mon 19 Oct" for an ISO date (formatted in UTC so the day never shifts). */
-function shortDay(iso: string): string {
-  return new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", {
-    weekday: "short", day: "numeric", month: "short", timeZone: "UTC",
-  });
-}
+import RescheduleList from "./reschedule-list";
+import { rescheduleChoices, shortDay, type ChoreItem } from "./reschedule-data";
 
 /** The Home screen's chores panel: overdue, due today, done today. */
 export default async function ChoresToday() {
-  const [chores, logs] = await Promise.all([getChores(), getChoreLogs(CHORE_LOG_DAYS)]);
+  const [chores, logs, moves, capacity] = await Promise.all([
+    getChores(), getChoreLogs(CHORE_LOG_DAYS), getChoreMoves(), getChoreCapacity(),
+  ]);
   const today = istToday();
-  const { overdue, due, done } = choresForDay(chores, logs, today);
+  // Moves go through the same buckets, so a rescheduled chore shows on its new day.
+  const { overdue, due, done } = choresForDay(chores, logs, today, moves);
   const outstanding = overdue.length + due.length;
+
+  // An outstanding chore plus its reschedule choices. Due today moves just today;
+  // an overdue one moves every missed day (they collapse onto the new date).
+  function toItem(chore: Chore, since?: string): ChoreItem {
+    const fromDates = since ? outstandingDates(chore, logs, today, moves) : [today];
+    const from = movedFrom(chore, today, moves);
+    return {
+      id: chore.id, name: chore.name, detail: describeSchedule(chore),
+      overdueSince: since && shortDay(since), movedFrom: from ? shortDay(from) : undefined, fromDates,
+      ...rescheduleChoices(chores, moves, chore, fromDates, today, capacity),
+    };
+  }
 
   // When nothing is outstanding, point at the next day that has chores (within a week).
   let next: { date: string; names: string[] } | null = null;
   if (outstanding === 0) {
     for (let i = 1; i <= 7 && !next; i++) {
       const d = addDaysISO(today, i);
-      const list = choresDueOn(chores, d);
+      const list = choresDueOn(chores, d, moves);
       if (list.length) next = { date: d, names: list.map((c) => c.name) };
     }
   }
@@ -51,28 +61,9 @@ export default async function ChoresToday() {
 
   return (
     <CollapsiblePanel id="chores" title="🧹 Chores" summary={total > 0 ? `${pct}%` : "—"} actions={actions}>
-      {overdue.length > 0 && (
-        <>
-          <SectionLabel>Overdue</SectionLabel>
-          <div className="flex flex-col gap-2.5">
-            {overdue.map(({ chore, since }) => (
-              <ChoreDueCard key={chore.id} id={chore.id} name={chore.name}
-                detail={describeSchedule(chore)} overdueSince={shortDay(since)} />
-            ))}
-          </div>
-        </>
-      )}
-
-      {due.length > 0 && (
-        <>
-          <SectionLabel>Today</SectionLabel>
-          <div className="flex flex-col gap-2.5">
-            {due.map((c) => (
-              <ChoreDueCard key={c.id} id={c.id} name={c.name} detail={describeSchedule(c)} />
-            ))}
-          </div>
-        </>
-      )}
+      <RescheduleList today={today} capacity={capacity}
+        overdue={overdue.map(({ chore, since }) => toItem(chore, since))}
+        due={due.map((c) => toItem(c))} />
 
       {done.length > 0 && (
         <>

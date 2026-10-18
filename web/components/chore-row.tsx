@@ -16,7 +16,9 @@ type Panel = null | "pause" | "resume" | "edit";
  * as isActiveOn(chore, today) — a chore whose resume date has arrived counts as
  * active even though its stored flag is still off.
  */
-export default function ChoreRow({ chore, active }: { chore: Chore; active: boolean }) {
+export default function ChoreRow({
+  chore, active, capacity,
+}: { chore: Chore; active: boolean; capacity?: number }) {
   const [panel, setPanel] = useState<Panel>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -46,7 +48,11 @@ export default function ChoreRow({ chore, active }: { chore: Chore; active: bool
       <div className="flex items-center gap-3 p-3.5">
         <div className="min-w-0 flex-1">
           <div className="truncate text-[14px] font-medium text-[var(--c-text)]">{chore.name}</div>
-          <div className="truncate text-[12px] text-[var(--c-muted)]">{describeSchedule(chore)}</div>
+          {/* Points sit outside the truncated part so a long schedule never hides them. */}
+          <div className="flex min-w-0 text-[12px] text-[var(--c-muted)]">
+            <span className="truncate">{describeSchedule(chore)}</span>
+            <span className="shrink-0 whitespace-pre"> · {chore.points} pts</span>
+          </div>
           {!active && scheduledOn && <ResumeChip date={scheduledOn} />}
         </div>
         <div className="flex shrink-0 gap-1.5">
@@ -69,7 +75,7 @@ export default function ChoreRow({ chore, active }: { chore: Chore; active: bool
       {panel === "edit" && (
         <div className="border-t border-[var(--c-border)] p-3.5">
           <ChoreForm action={editChore.bind(null, chore.id)} chore={chore}
-            submitLabel="Save changes" onDone={close} />
+            submitLabel="Save changes" onDone={close} capacity={capacity} />
         </div>
       )}
     </div>

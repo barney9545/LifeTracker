@@ -206,15 +206,20 @@ export function choresDueOn(chores: Chore[], iso: string, moves: StoredChoreMove
  *  - An occurrence that was itself moved in is re-targeted (no chains), and the
  *    move is dropped entirely when it lands back on its original day.
  *  - Moving onto a day it already occurs merges them (one completion covers it).
+ *    Moving such a merged day later moves BOTH occurrences — which needs
+ *    `isPatternDay` (pass `(d) => isScheduledOn(chore, d)`) to see the pattern one.
  */
-export function applyMove(moves: ChoreMove[], fromDates: string[], to: string): ChoreMove[] {
+export function applyMove(
+  moves: ChoreMove[], fromDates: string[], to: string, isPatternDay: (iso: string) => boolean = () => false,
+): ChoreMove[] {
   const out = moves.map((m) => ({ fromDate: m.fromDate, toDate: m.toDate }));
   for (const from of fromDates) {
     if (from === to) continue;
     const movedIn = out.filter((m) => m.toDate === from);
-    if (movedIn.length) {
-      for (const m of movedIn) m.toDate = to;
-    } else if (!out.some((m) => m.fromDate === from)) {
+    for (const m of movedIn) m.toDate = to;
+    // The pattern occurrence on this day (if any, and not already moved away) goes too.
+    const patternHere = movedIn.length ? isPatternDay(from) : true;
+    if (patternHere && !out.some((m) => m.fromDate === from)) {
       out.push({ fromDate: from, toDate: to });
     }
   }
@@ -227,7 +232,8 @@ export function applyMove(moves: ChoreMove[], fromDates: string[], to: string): 
 /* Capacity                                                            */
 /* ------------------------------------------------------------------ */
 
-const pointsOf = (c: Chore) => (Number.isFinite(c.points) && c.points >= 0 ? c.points : DEFAULT_POINTS);
+/** A chore's effort points, falling back to DEFAULT_POINTS for missing / invalid values. */
+export const pointsOf = (c: Chore) => (Number.isFinite(c.points) && c.points >= 0 ? c.points : DEFAULT_POINTS);
 
 /** Planned load for a date: points of every chore that occurs on it. */
 export function plannedLoadOn(chores: Chore[], iso: string, moves: StoredChoreMove[] = []): number {

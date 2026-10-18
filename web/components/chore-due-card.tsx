@@ -7,13 +7,17 @@ import ChoreDoneCard from "./chore-done-card";
 
 /** An outstanding chore (overdue or due today) with a one-tap check, like DueCard. */
 export default function ChoreDueCard({
-  id, name, detail, overdueSince,
+  id, name, detail, overdueSince, movedFrom, reschedule,
 }: {
   id: string;
   name: string;
   detail: string;
   /** e.g. "Mon 19 Oct" when it was missed on an earlier day. */
   overdueSince?: string;
+  /** e.g. "Mon 19 Oct" when today's occurrence was moved here from that day. */
+  movedFrom?: string;
+  /** Reschedule control, shown left of the check (hidden once marked). */
+  reschedule?: React.ReactNode;
 }) {
   const [pending, startTransition] = useTransition();
   // Once marked, hand off to ChoreDoneCard (with undo) using the new log id.
@@ -48,9 +52,15 @@ export default function ChoreDueCard({
               since {overdueSince}
             </span>
           )}
+          {movedFrom && (
+            <span className="shrink-0 rounded-full bg-[var(--c-accent-soft)] px-2 py-0.5 text-[11px] font-medium text-[var(--c-accent)]">
+              moved from {movedFrom}
+            </span>
+          )}
           <span className="truncate text-[12px] text-[var(--c-muted)]">{detail}</span>
         </div>
       </div>
+      {!marked && reschedule}
       <button onClick={handleDone} disabled={pending || marked}
         aria-label={`Mark ${name} done`}
         className="shrink-0 transition active:scale-90">

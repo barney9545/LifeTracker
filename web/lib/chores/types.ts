@@ -51,7 +51,7 @@ export interface NewChoreLog {
 /**
  * A one-off reschedule of a single occurrence: the chore doesn't happen on
  * `fromDate` and happens on `toDate` instead. The repeating schedule is untouched.
- * Invariant (kept by `applyMove`): no move's fromDate equals another move's toDate.
+ * Lists are built by `applyMove`, which re-targets moved-in occurrences instead of chaining.
  */
 export interface ChoreMove {
   fromDate: string;

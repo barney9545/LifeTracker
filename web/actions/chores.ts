@@ -6,7 +6,7 @@ import { getSession } from "@/lib/auth";
 import { dateSchema } from "@/lib/validation";
 import { parseChoreForm } from "@/lib/chores/validation";
 import { istToday } from "@/lib/core/logic";
-import { applyMove } from "@/lib/chores/logic";
+import { applyMove, isScheduledOn } from "@/lib/chores/logic";
 import type { ChoreMove } from "@/lib/chores/types";
 import { z } from "zod";
 import { REPO_TAGS } from "@/lib/data";
@@ -102,10 +102,13 @@ export async function moveChore(choreId: string, fromDates: string[], toDate: st
   if (!to.success || !from.success) return { ok: false, error: "Invalid date" };
   if (to.data < istToday()) return { ok: false, error: "Pick today or a future date" };
   const repo = getRepository();
-  const previous = (await repo.getChoreMoves())
+  const [chores, moves] = await Promise.all([repo.getChores(), repo.getChoreMoves()]);
+  const chore = chores.find((c) => c.id === choreId);
+  if (!chore) return { ok: false, error: "Chore not found" };
+  const previous = moves
     .filter((m) => m.choreId === choreId)
     .map((m) => ({ fromDate: m.fromDate, toDate: m.toDate }));
-  await repo.setChoreMoves(choreId, applyMove(previous, from.data, to.data));
+  await repo.setChoreMoves(choreId, applyMove(previous, from.data, to.data, (d) => isScheduledOn(chore, d)));
   revalidateChores();
   return { ok: true, previous };
 }
