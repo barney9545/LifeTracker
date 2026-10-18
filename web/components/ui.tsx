@@ -29,3 +29,15 @@ export function todColor(tod: string): string {
     default: return "#6b7280";
   }
 }
+
+/** Square row action button (✏️ / ⏸ / 🗑️) used by the Manage rows. */
+export function IconBtn({ onClick, label, children, disabled }: {
+  onClick: () => void; label: string; children: React.ReactNode; disabled?: boolean;
+}) {
+  return (
+    <button onClick={onClick} disabled={disabled} aria-label={label}
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--c-border)] bg-[var(--c-surface-2)] text-[14px] transition active:scale-90 disabled:opacity-40">
+      {children}
+    </button>
+  );
+}

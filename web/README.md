@@ -1,6 +1,6 @@
 # Tracker
 
-A private, single-user, mobile-first supplement tracker — installable PWA, Google sign-in, Google Sheets as the data store, with Telegram reminders and a daily AI digest.
+A private, single-user, mobile-first supplement + chores tracker — installable PWA, Google sign-in, Google Sheets as the data store, with Telegram reminders and a daily AI digest.
 
 ## Stack
 - **Next.js 16 (App Router) + TypeScript**, Tailwind CSS
@@ -41,6 +41,9 @@ For UI work without Google/Sheets, set `REPOSITORY=memory` and `AUTH_DEV_BYPASS=
 Point one free pinger (e.g. cron-job.org, timezone Asia/Kolkata) at the endpoint on cron `0 8,13,20 * * *`. Force an action for testing with `?do=summary|lunch|evening`.
 
 The digest is **in-app** now — the legacy `digest.gs` Apps Script is retired (disable its time trigger to avoid duplicate summaries).
+
+### Chores reminder
+`/api/cron/chores` Telegrams **tomorrow's chores + anything still outstanding** (incl. today's undone ones); sends nothing if both are empty. Separate cron-job.org job: `0 21 * * *` (Asia/Kolkata), same `Authorization: Bearer <CRON_SECRET>` header. Test with `?dry=1` (returns the message, doesn't send) and `?date=yyyy-mm-dd` (pretend it's that evening). The logic is channel-agnostic: `lib/chores/reminder.ts` builds the data, a separate formatter renders it for Telegram.
 
 ## Security
 Security headers + CSP in `next.config.ts`; `noindex` + `robots.ts` (private app); auth on every mutation; zod validation; secrets server-only.

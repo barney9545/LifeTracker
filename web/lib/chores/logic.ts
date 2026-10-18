@@ -124,6 +124,7 @@ export function choresForDay(chores: Chore[], logs: LogEntry[], today: string): 
   const out: ChoreDay = { overdue: [], due: [], done: [] };
   const byName = (a: Chore, b: Chore) => a.name.localeCompare(b.name);
   for (const chore of [...chores].sort(byName)) {
+    if (!isActiveOn(chore, today)) continue; // paused chores never appear, even if done today
     const doneToday = logs.filter((l) => l.itemId === chore.id && l.done && l.date === today);
     if (doneToday.length) {
       out.done.push({ chore, logId: doneToday[doneToday.length - 1].id });
