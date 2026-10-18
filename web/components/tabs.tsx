@@ -8,10 +8,15 @@ import { useState } from "react";
  */
 export default function Tabs({
   tabs,
+  initialKey,
 }: {
   tabs: { key: string; label: string; content: React.ReactNode }[];
+  /** Tab to open first (e.g. from a `?tab=` param); falls back to the first tab. */
+  initialKey?: string;
 }) {
-  const [active, setActive] = useState(tabs[0]?.key ?? "");
+  const [active, setActive] = useState(
+    tabs.some((t) => t.key === initialKey) ? initialKey! : (tabs[0]?.key ?? ""),
+  );
 
   return (
     <>

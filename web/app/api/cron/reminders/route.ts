@@ -3,7 +3,8 @@ import { revalidateTag } from "next/cache";
 import { dueForSlot, reminderMessage, SLOTS, type Slot } from "@/lib/reminders";
 import { runDailyDigest } from "@/lib/summary";
 import { sendTelegram } from "@/lib/notify";
-import { istHour } from "@/lib/core/logic";
+import { istHour, istToday } from "@/lib/core/logic";
+import { runChoresReminder } from "@/lib/chores/nightly";
 import { applyScheduledResumes } from "@/lib/schedule";
 import { REPO_TAGS } from "@/lib/data";
 
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 /** What a single daily cron (08 / 13 / 20 IST) does, chosen by IST time:
  *   morning  → send the daily summary/digest (no reminder)
  *   lunch    → remind Morning + Afternoon supplements still pending
- *   evening  → remind everything still pending */
+ *   evening  → remind everything still pending, plus the chores reminder */
 type Action = "summary" | Slot;
 
 function autoAction(): Action {
@@ -55,12 +56,23 @@ export async function GET(req: NextRequest) {
       return Response.json({ action, resumed, sent: items > 0, items, short, debug });
     }
 
+    // Evening also sends the chores reminder (tomorrow + overdue) as its own message.
+    // Independent of the supplements one: either failing doesn't block the other.
+    let chores: unknown = undefined;
+    if (action === "evening") {
+      try {
+        chores = await runChoresReminder(istToday());
+      } catch (e) {
+        chores = { error: (e as Error).message };
+      }
+    }
+
     const items = await dueForSlot(action);
     if (items.length === 0) {
-      return Response.json({ action, resumed, sent: false, due: 0 });
+      return Response.json({ action, resumed, sent: false, due: 0, chores });
     }
     await sendTelegram(reminderMessage(action, items));
-    return Response.json({ action, resumed, sent: true, due: items.length, items: items.map((i) => i.name) });
+    return Response.json({ action, resumed, sent: true, due: items.length, items: items.map((i) => i.name), chores });
   } catch (e) {
     return Response.json({ action, resumed, error: (e as Error).message }, { status: 500 });
   }

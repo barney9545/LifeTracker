@@ -7,6 +7,7 @@
  * with zero changes to screens, actions, or core logic.
  */
 import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
+import type { Chore, ChorePatch, NewChore, NewChoreLog } from "../chores/types";
 
 // `addedDate` is stamped by the repository on insert, so callers don't supply it.
 export type NewItem = Omit<TrackableItem, "id" | "addedDate">;
@@ -55,4 +56,23 @@ export interface TrackerRepository {
   deleteLog(logId: string): Promise<void>;
   /** Patch a single log entry by id (e.g. correct the time it was taken). */
   updateLog(logId: string, patch: { time?: string }): Promise<void>;
+
+  /* ---- Chores (own tabs: `chores` + `chore_log`; completions reuse LogEntry) ---- */
+
+  /** All chores (active and paused). Seeds the starting list if the store has none yet. */
+  getChores(): Promise<Chore[]>;
+  /** Chore completions within the last `days` days (LogEntry.itemId = chore id). */
+  getChoreLogs(days: number): Promise<LogEntry[]>;
+  addChore(chore: NewChore): Promise<Chore>;
+  updateChore(id: string, patch: ChorePatch): Promise<void>;
+  /** Same semantics as setActive: resuming stamps resumedDate = today; both clear resumeOn. */
+  setChoreActive(id: string, active: boolean): Promise<void>;
+  /** Pause and auto-resume on `dateISO` (no cron needed — logic treats it as active from then). */
+  scheduleChoreResume(id: string, dateISO: string): Promise<void>;
+  /** Removes the chore; its history rows are kept. */
+  deleteChore(id: string): Promise<void>;
+  /** Record a completion (date defaults to IST today). */
+  logChore(entry: NewChoreLog): Promise<LogEntry>;
+  /** Undo a completion. */
+  deleteChoreLog(logId: string): Promise<void>;
 }

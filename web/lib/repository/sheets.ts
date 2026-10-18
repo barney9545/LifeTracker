@@ -7,6 +7,9 @@
  *                best_taken_with,notes,active,time_of_day
  *   log:         id,date,supplement_id,supplement_name,taken,time_taken,notes
  *   ai_summary:  short,long,updated_at,date
+ *   chores:      id,name,days,frequency,week,active,added_date,resumed_date,resume_on,notes
+ *                (days like "Mon,Thu"; frequency weekly|biweekly; week A|B)
+ *   chore_log:   id,date,chore_id,chore_name,done,notes
  */
 import "server-only";
 import { GoogleSpreadsheet, type GoogleSpreadsheetRow } from "google-spreadsheet";
@@ -14,6 +17,58 @@ import { JWT } from "google-auth-library";
 import type { AiSummary, Frequency, LogEntry, TimeOfDay, TrackableItem } from "../core/types";
 import { daysAgoISO, istStamp, istToday, todayISO } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
+import type { Chore, ChorePatch, ChoreWeek, NewChore, NewChoreLog, Weekday } from "../chores/types";
+import { SEED_CHORES, SEED_START } from "../chores/seed";
+
+const CHORE_HEADERS = [
+  "id", "name", "days", "frequency", "week", "active", "added_date", "resumed_date", "resume_on", "notes",
+];
+const CHORE_LOG_HEADERS = ["id", "date", "chore_id", "chore_name", "done", "notes"];
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** "Mon,Thu" (or "1,4") → [1, 4]; weekdays only, ascending, de-duplicated. */
+function parseDays(v: unknown): Weekday[] {
+  const out = new Set<Weekday>();
+  for (const part of String(v ?? "").split(/[,\s]+/)) {
+    const p = part.trim().slice(0, 3).toLowerCase();
+    if (!p) continue;
+    const n = /^\d$/.test(p) ? Number(p) : DAY_NAMES.findIndex((d) => d.toLowerCase() === p) + 1;
+    if (n >= 1 && n <= 5) out.add(n as Weekday);
+  }
+  return [...out].sort((a, b) => a - b);
+}
+
+function formatDays(days: Weekday[]): string {
+  return days.map((d) => DAY_NAMES[d - 1]).join(",");
+}
+
+function rowToChore(r: GoogleSpreadsheetRow): Chore {
+  const freq = String(r.get("frequency") ?? "").trim().toLowerCase();
+  return {
+    id: String(r.get("id") ?? ""),
+    name: String(r.get("name") ?? ""),
+    days: parseDays(r.get("days")),
+    frequency: freq === "biweekly" ? "biweekly" : "weekly",
+    week: (String(r.get("week") ?? "").trim().toUpperCase() === "B" ? "B" : "A") as ChoreWeek,
+    active: bool(r.get("active")),
+    notes: String(r.get("notes") ?? ""),
+    addedDate: normDate(r.get("added_date")),
+    resumedDate: normDate(r.get("resumed_date")),
+    resumeOn: normDate(r.get("resume_on")),
+  };
+}
+
+function rowToChoreLog(r: GoogleSpreadsheetRow): LogEntry {
+  return {
+    id: String(r.get("id") ?? ""),
+    itemId: String(r.get("chore_id") ?? ""),
+    itemName: String(r.get("chore_name") ?? ""),
+    date: normDate(r.get("date")),
+    done: bool(r.get("done")),
+    time: "",
+    notes: String(r.get("notes") ?? ""),
+  };
+}
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
@@ -331,5 +386,116 @@ export class SheetsRepository implements TrackerRepository {
     } else {
       await sheet.addRow({ key, value });
     }
+  }
+
+  /* ---- Chores ---- */
+
+  private choreTabs: Promise<void> | null = null;
+
+  /** Create `chores` (seeded with the starting list) and `chore_log` on first use. */
+  private ensureChoreTabs(): Promise<void> {
+    if (!this.choreTabs) {
+      this.choreTabs = (async () => {
+        const doc = await this.doc();
+        if (!doc.sheetsByTitle["chores"]) {
+          const sheet = await doc.addSheet({ title: "chores", headerValues: CHORE_HEADERS });
+          await sheet.addRows(
+            SEED_CHORES.map((c, i) => ({
+              id: String(i + 1), name: c.name, days: formatDays(c.days), frequency: c.frequency,
+              week: c.week, active: c.active ? "TRUE" : "FALSE", added_date: SEED_START,
+              resumed_date: "", resume_on: "", notes: c.notes,
+            })),
+          );
+        }
+        if (!doc.sheetsByTitle["chore_log"]) {
+          await doc.addSheet({ title: "chore_log", headerValues: CHORE_LOG_HEADERS });
+        }
+      })().catch((e) => {
+        this.choreTabs = null; // let the next call retry
+        throw e;
+      });
+    }
+    return this.choreTabs;
+  }
+
+  private async choreRow(id: string) {
+    await this.ensureChoreTabs();
+    const rows = await (await this.tab("chores")).getRows();
+    return rows.find((r) => String(r.get("id")) === String(id));
+  }
+
+  async getChores(): Promise<Chore[]> {
+    await this.ensureChoreTabs();
+    const rows = await (await this.tab("chores")).getRows();
+    return rows.map(rowToChore).filter((c) => c.id && c.name);
+  }
+
+  async getChoreLogs(days: number): Promise<LogEntry[]> {
+    await this.ensureChoreTabs();
+    const rows = await (await this.tab("chore_log")).getRows();
+    const cutoff = daysAgoISO(days);
+    return rows.map(rowToChoreLog).filter((l) => l.date >= cutoff);
+  }
+
+  async addChore(chore: NewChore): Promise<Chore> {
+    await this.ensureChoreTabs();
+    const sheet = await this.tab("chores");
+    const id = nextId(await sheet.getRows());
+    const addedDate = istToday();
+    await sheet.addRow({
+      id, name: chore.name, days: formatDays(chore.days), frequency: chore.frequency,
+      week: chore.week, active: chore.active ? "TRUE" : "FALSE", added_date: addedDate,
+      resumed_date: "", resume_on: "", notes: chore.notes ?? "",
+    });
+    return { ...chore, id, addedDate };
+  }
+
+  async updateChore(id: string, patch: ChorePatch): Promise<void> {
+    const row = await this.choreRow(id);
+    if (!row) return;
+    if (patch.name !== undefined) row.set("name", patch.name);
+    if (patch.days !== undefined) row.set("days", formatDays(patch.days));
+    if (patch.frequency !== undefined) row.set("frequency", patch.frequency);
+    if (patch.week !== undefined) row.set("week", patch.week);
+    if (patch.notes !== undefined) row.set("notes", patch.notes);
+    await row.save();
+  }
+
+  async setChoreActive(id: string, active: boolean): Promise<void> {
+    const row = await this.choreRow(id);
+    if (!row) return;
+    row.set("active", active ? "TRUE" : "FALSE");
+    row.set("resume_on", "");
+    if (active) row.set("resumed_date", istToday());
+    await row.save();
+  }
+
+  async scheduleChoreResume(id: string, dateISO: string): Promise<void> {
+    const row = await this.choreRow(id);
+    if (!row) return;
+    row.set("active", "FALSE");
+    row.set("resume_on", dateISO);
+    await row.save();
+  }
+
+  async deleteChore(id: string): Promise<void> {
+    const row = await this.choreRow(id);
+    if (row) await row.delete();
+  }
+
+  async logChore(entry: NewChoreLog): Promise<LogEntry> {
+    await this.ensureChoreTabs();
+    const sheet = await this.tab("chore_log");
+    const id = nextId(await sheet.getRows());
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? "") ? entry.date! : istToday();
+    await sheet.addRow({ id, date, chore_id: entry.choreId, chore_name: entry.choreName, done: "TRUE", notes: "" });
+    return { id, itemId: entry.choreId, itemName: entry.choreName, date, done: true, time: "", notes: "" };
+  }
+
+  async deleteChoreLog(logId: string): Promise<void> {
+    await this.ensureChoreTabs();
+    const rows = await (await this.tab("chore_log")).getRows();
+    const row = rows.find((r) => String(r.get("id")) === String(logId));
+    if (row) await row.delete();
   }
 }
