@@ -8,7 +8,8 @@
  *   log:         id,date,supplement_id,supplement_name,taken,time_taken,notes
  *   ai_summary:  short,long,updated_at,date
  *   chores:      id,name,days,frequency,week,active,added_date,resumed_date,resume_on,notes
- *                (days like "Mon,Thu"; frequency weekly|biweekly; week A|B)
+ *                ,month_week (days like "Mon,Thu"; frequency weekly|biweekly|monthly;
+ *                week A|B; month_week 1–4 or "last")
  *   chore_log:   id,date,chore_id,chore_name,done,notes
  */
 import "server-only";
@@ -17,23 +18,23 @@ import { JWT } from "google-auth-library";
 import type { AiSummary, Frequency, LogEntry, TimeOfDay, TrackableItem } from "../core/types";
 import { daysAgoISO, istStamp, istToday, todayISO } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
-import type { Chore, ChorePatch, ChoreWeek, NewChore, NewChoreLog, Weekday } from "../chores/types";
+import type { Chore, ChorePatch, ChoreWeek, MonthWeek, NewChore, NewChoreLog, Weekday } from "../chores/types";
 import { SEED_CHORES, SEED_START } from "../chores/seed";
 
 const CHORE_HEADERS = [
-  "id", "name", "days", "frequency", "week", "active", "added_date", "resumed_date", "resume_on", "notes",
+  "id", "name", "days", "frequency", "week", "active", "added_date", "resumed_date", "resume_on", "notes", "month_week",
 ];
 const CHORE_LOG_HEADERS = ["id", "date", "chore_id", "chore_name", "done", "notes"];
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-/** "Mon,Thu" (or "1,4") → [1, 4]; weekdays only, ascending, de-duplicated. */
+/** "Mon,Thu" (or "1,4") → [1, 4]; Mon–Sun, ascending, de-duplicated. */
 function parseDays(v: unknown): Weekday[] {
   const out = new Set<Weekday>();
   for (const part of String(v ?? "").split(/[,\s]+/)) {
     const p = part.trim().slice(0, 3).toLowerCase();
     if (!p) continue;
     const n = /^\d$/.test(p) ? Number(p) : DAY_NAMES.findIndex((d) => d.toLowerCase() === p) + 1;
-    if (n >= 1 && n <= 5) out.add(n as Weekday);
+    if (n >= 1 && n <= 7) out.add(n as Weekday);
   }
   return [...out].sort((a, b) => a - b);
 }
@@ -42,14 +43,27 @@ function formatDays(days: Weekday[]): string {
   return days.map((d) => DAY_NAMES[d - 1]).join(",");
 }
 
+/** "1".."4" / "last" ↔ 1..4 / -1. Blank or junk → 1. */
+function parseMonthWeek(v: unknown): MonthWeek {
+  const s = String(v ?? "").trim().toLowerCase();
+  if (s === "last" || s === "-1") return -1;
+  const n = Number(s);
+  return n === 2 || n === 3 || n === 4 ? n : 1;
+}
+
+function formatMonthWeek(w: MonthWeek): string {
+  return w === -1 ? "last" : String(w);
+}
+
 function rowToChore(r: GoogleSpreadsheetRow): Chore {
   const freq = String(r.get("frequency") ?? "").trim().toLowerCase();
   return {
     id: String(r.get("id") ?? ""),
     name: String(r.get("name") ?? ""),
     days: parseDays(r.get("days")),
-    frequency: freq === "biweekly" ? "biweekly" : "weekly",
+    frequency: freq === "biweekly" || freq === "monthly" ? freq : "weekly",
     week: (String(r.get("week") ?? "").trim().toUpperCase() === "B" ? "B" : "A") as ChoreWeek,
+    monthWeek: parseMonthWeek(r.get("month_week")),
     active: bool(r.get("active")),
     notes: String(r.get("notes") ?? ""),
     addedDate: normDate(r.get("added_date")),
@@ -403,9 +417,12 @@ export class SheetsRepository implements TrackerRepository {
             SEED_CHORES.map((c, i) => ({
               id: String(i + 1), name: c.name, days: formatDays(c.days), frequency: c.frequency,
               week: c.week, active: c.active ? "TRUE" : "FALSE", added_date: SEED_START,
-              resumed_date: "", resume_on: "", notes: c.notes,
+              resumed_date: "", resume_on: "", notes: c.notes, month_week: formatMonthWeek(c.monthWeek),
             })),
           );
+        } else {
+          // Tabs created before monthly chores existed lack this column.
+          await this.ensureColumn(doc.sheetsByTitle["chores"], "month_week");
         }
         if (!doc.sheetsByTitle["chore_log"]) {
           await doc.addSheet({ title: "chore_log", headerValues: CHORE_LOG_HEADERS });
@@ -445,7 +462,7 @@ export class SheetsRepository implements TrackerRepository {
     await sheet.addRow({
       id, name: chore.name, days: formatDays(chore.days), frequency: chore.frequency,
       week: chore.week, active: chore.active ? "TRUE" : "FALSE", added_date: addedDate,
-      resumed_date: "", resume_on: "", notes: chore.notes ?? "",
+      resumed_date: "", resume_on: "", notes: chore.notes ?? "", month_week: formatMonthWeek(chore.monthWeek),
     });
     return { ...chore, id, addedDate };
   }
@@ -457,6 +474,7 @@ export class SheetsRepository implements TrackerRepository {
     if (patch.days !== undefined) row.set("days", formatDays(patch.days));
     if (patch.frequency !== undefined) row.set("frequency", patch.frequency);
     if (patch.week !== undefined) row.set("week", patch.week);
+    if (patch.monthWeek !== undefined) row.set("month_week", formatMonthWeek(patch.monthWeek));
     if (patch.notes !== undefined) row.set("notes", patch.notes);
     await row.save();
   }

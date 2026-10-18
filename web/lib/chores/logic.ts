@@ -5,8 +5,9 @@
  * this file directly.)
  *
  * Rules:
- *  - A chore repeats on fixed weekdays, weekly or every two weeks. The schedule
- *    never shifts based on when it was actually done.
+ *  - A chore repeats on fixed weekdays: weekly, every two weeks, or monthly on
+ *    the Nth (or last) such weekday. The schedule never shifts based on when it
+ *    was actually done.
  *  - Two-week chores alternate A/B weeks, anchored on WEEK_A_START.
  *  - A scheduled day with no completion on/after it stays "outstanding" until the
  *    chore is marked done; one completion clears every outstanding occurrence up
@@ -15,7 +16,7 @@
  *  - Nothing before the chore's schedule start (added / resumed) is ever overdue.
  */
 import type { LogEntry } from "../core/types";
-import type { Chore, ChoreWeek, Weekday } from "./types";
+import type { Chore, ChoreWeek, MonthWeek, Weekday } from "./types";
 
 /** Monday of the first "A" week. Two-week chores alternate A/B from here. */
 export const WEEK_A_START = "2026-10-19";
@@ -23,7 +24,9 @@ export const WEEK_A_START = "2026-10-19";
 /** How far back overdue detection looks; callers should fetch at least this many days of chore logs. */
 export const CHORE_LOG_DAYS = 60;
 
-export const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5];
+export const WEEKDAYS: Weekday[] = [1, 2, 3, 4, 5, 6, 7];
+export const MONTH_WEEKS: MonthWeek[] = [1, 2, 3, 4, -1];
+export const MONTH_WEEK_LABELS: Record<number, string> = { 1: "1st", 2: "2nd", 3: "3rd", 4: "4th", [-1]: "Last" };
 export const WEEKDAY_LABELS: Record<number, string> = {
   1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat", 7: "Sun",
 };
@@ -58,9 +61,17 @@ export function weekOf(iso: string): ChoreWeek {
   return ((weeks % 2) + 2) % 2 === 0 ? "A" : "B";
 }
 
+/** Whether `iso` is the Nth (or, for -1, the last) of its weekday in its month. */
+export function isMonthWeek(iso: string, n: MonthWeek): boolean {
+  const day = Number(iso.slice(8, 10));
+  if (n === -1) return addDaysISO(iso, 7).slice(5, 7) !== iso.slice(5, 7);
+  return Math.ceil(day / 7) === n;
+}
+
 /** Whether the chore's pattern lands on `iso` (ignores active / start date). */
 export function isScheduledOn(chore: Chore, iso: string): boolean {
   if (!chore.days.includes(weekdayOf(iso) as Weekday)) return false;
+  if (chore.frequency === "monthly") return isMonthWeek(iso, chore.monthWeek);
   return chore.frequency === "weekly" || weekOf(iso) === chore.week;
 }
 
@@ -144,8 +155,9 @@ export function choresDueOn(chores: Chore[], iso: string): Chore[] {
   return chores.filter((c) => isDueOn(c, iso)).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** "Mon, Thu · weekly" / "Wed · every 2 weeks (B)". */
+/** "Mon, Thu · weekly" / "Wed · every 2 weeks (B)" / "1st Mon · monthly". */
 export function describeSchedule(chore: Chore): string {
   const days = chore.days.map((d) => WEEKDAY_LABELS[d]).join(", ") || "No days";
+  if (chore.frequency === "monthly") return `${MONTH_WEEK_LABELS[chore.monthWeek] ?? "1st"} ${days} · monthly`;
   return chore.frequency === "biweekly" ? `${days} · every 2 weeks (${chore.week})` : `${days} · weekly`;
 }
