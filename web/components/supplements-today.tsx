@@ -7,8 +7,10 @@ import { SectionLabel, todColor } from "./ui";
 import DueCard from "./due-card";
 import DoneCard from "./done-card";
 import CollapsiblePanel from "./collapsible-panel";
+import PopupButton, { InfoIcon, SparkleIcon } from "./popup-button";
+import ProgressCard from "./progress-card";
 
-/** The Home screen's supplements panel: AI insight, progress, due / done / not-due. */
+/** The Home screen's supplements panel: due / done / not-due, with AI insight + progress popups. */
 export default async function SupplementsToday() {
   const [items, logs, ai] = await Promise.all([
     getItems(),
@@ -39,42 +41,31 @@ export default async function SupplementsToday() {
   const pct = dueToday > 0 ? Math.round((done.length / dueToday) * 100) : 0;
   const today = istToday();
 
-  // Shown in the header so a minimised panel still says where things stand.
-  const summary =
-    dueToday === 0 ? "Nothing due"
-    : due.length === 0 ? `All ${done.length} done`
-    : `${due.length} due · ${done.length} done`;
+  // Header: a small % (stays informative while minimised), the AI insight and the
+  // full progress card behind icon popups.
+  const actions = (
+    <>
+      {ai?.short && (
+        <PopupButton label="AI insight" icon={<SparkleIcon />}>
+          <div className="rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface-2)] p-4">
+            <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--c-accent)]">✨ AI Insight</p>
+            <p className="text-[13.5px] leading-relaxed text-[var(--c-text)]">{ai.short}</p>
+          </div>
+        </PopupButton>
+      )}
+      <PopupButton label="Supplements progress" icon={<InfoIcon />}>
+        <ProgressCard title="Today's progress" pct={pct} stats={[
+          { label: "Due", value: due.length, color: "var(--c-due)" },
+          { label: "Done", value: done.length, color: "var(--c-done)" },
+          { label: "Active", value: activeCount, color: "var(--c-accent)" },
+        ]} />
+      </PopupButton>
+    </>
+  );
 
   return (
-    <CollapsiblePanel id="supplements" title={`${T.icon} ${T.labelPlural}`} summary={summary}>
-      {ai?.short && (
-        <div className="mb-4 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface-2)] p-4">
-          <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--c-accent)]">✨ AI Insight</p>
-          <p className="text-[13.5px] leading-relaxed text-[var(--c-text)]">{ai.short}</p>
-        </div>
-      )}
-
-      <div className="mb-2 rounded-2xl border border-[var(--c-border)] bg-[var(--c-surface)] p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <span className="text-[13px] font-medium text-[var(--c-text)]">Today&apos;s progress</span>
-          <span className="text-[13px] font-semibold text-[var(--c-accent)]">{pct}%</span>
-        </div>
-        <div className="mb-4 h-2 overflow-hidden rounded-full bg-[var(--c-surface-2)]">
-          <div className="h-full rounded-full bg-[var(--c-accent)] transition-[width]" style={{ width: `${pct}%` }} />
-        </div>
-        <div className="flex justify-between">
-          {[
-            { label: "Due", value: due.length, color: "var(--c-due)" },
-            { label: "Done", value: done.length, color: "var(--c-done)" },
-            { label: "Active", value: activeCount, color: "var(--c-accent)" },
-          ].map((s) => (
-            <div key={s.label} className="flex flex-col items-center">
-              <span className="text-[20px] font-semibold leading-none" style={{ color: s.color }}>{s.value}</span>
-              <span className="mt-1 text-[11px] text-[var(--c-muted)]">{s.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+    <CollapsiblePanel id="supplements" title={`${T.icon} ${T.labelPlural}`}
+      summary={dueToday > 0 ? `${pct}%` : "—"} actions={actions}>
 
       {due.length > 0 && (
         <>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { istHour } from "@/lib/core/logic";
 import SupplementsToday from "@/components/supplements-today";
 import ChoresToday from "@/components/chores-today";
+import { PanelRail } from "@/components/collapsible-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,10 @@ export default function TodayPage() {
 
       <SupplementsToday />
       <ChoresToday />
+      <PanelRail panels={[
+        { id: "supplements", label: "Supplements" },
+        { id: "chores", label: "Chores" },
+      ]} />
     </>
   );
 }

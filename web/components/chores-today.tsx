@@ -8,6 +8,8 @@ import { SectionLabel } from "./ui";
 import ChoreDueCard from "./chore-due-card";
 import ChoreDoneCard from "./chore-done-card";
 import CollapsiblePanel from "./collapsible-panel";
+import PopupButton, { InfoIcon } from "./popup-button";
+import ProgressCard from "./progress-card";
 
 /** "Mon 19 Oct" for an ISO date (formatted in UTC so the day never shifts). */
 function shortDay(iso: string): string {
@@ -33,17 +35,22 @@ export default async function ChoresToday() {
     }
   }
 
-  const summary =
-    outstanding === 0
-      ? (done.length ? `All ${done.length} done` : "Nothing due")
-      : [
-          due.length ? `${due.length} due` : "",
-          overdue.length ? `${overdue.length} overdue` : "",
-          done.length ? `${done.length} done` : "",
-        ].filter(Boolean).join(" · ");
+  // Progress against everything on today's list (overdue + due + done).
+  const total = outstanding + done.length;
+  const pct = total > 0 ? Math.round((done.length / total) * 100) : 0;
+
+  const actions = (
+    <PopupButton label="Chores progress" icon={<InfoIcon />}>
+      <ProgressCard title="Today's chores" pct={pct} stats={[
+        { label: "Overdue", value: overdue.length, color: "var(--c-due)" },
+        { label: "Due", value: due.length, color: "var(--c-accent)" },
+        { label: "Done", value: done.length, color: "var(--c-done)" },
+      ]} />
+    </PopupButton>
+  );
 
   return (
-    <CollapsiblePanel id="chores" title="🧹 Chores" summary={summary}>
+    <CollapsiblePanel id="chores" title="🧹 Chores" summary={total > 0 ? `${pct}%` : "—"} actions={actions}>
       {overdue.length > 0 && (
         <>
           <SectionLabel>Overdue</SectionLabel>
