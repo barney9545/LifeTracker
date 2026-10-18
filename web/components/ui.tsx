@@ -41,3 +41,14 @@ export function IconBtn({ onClick, label, children, disabled }: {
     </button>
   );
 }
+
+/** Capacity colours by level (see capacityLevel): empty → green → amber → red.
+ *  Red is deliberate here — over capacity is a real warning. */
+export function capacityColor(level: 0 | 1 | 2 | 3): { bg: string; text: string } {
+  switch (level) {
+    case 1: return { bg: "rgba(34,197,94,0.22)", text: "#4ade80" };
+    case 2: return { bg: "rgba(251,191,36,0.22)", text: "#fbbf24" };
+    case 3: return { bg: "rgba(248,113,113,0.25)", text: "#f87171" };
+    default: return { bg: "var(--c-surface-2)", text: "var(--c-muted)" };
+  }
+}
