@@ -6,6 +6,8 @@
 import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
 import { daysAgoISO, istStamp, istToday } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
+import type { Chore, ChorePatch, NewChore, NewChoreLog } from "../chores/types";
+import { SEED_CHORES } from "../chores/seed";
 
 function seedItems(): TrackableItem[] {
   return [
@@ -33,9 +35,24 @@ function seedLogs(): LogEntry[] {
   return logs;
 }
 
+// Dev seed: the real starting list, back-dated 10 days so the UI shows overdue
+// items. Laundry was done 3 days ago; nothing else has been done.
+function seedChores(): Chore[] {
+  return SEED_CHORES.map((c, i) => ({ ...c, id: String(i + 1), addedDate: daysAgoISO(10) }));
+}
+function seedChoreLogs(): LogEntry[] {
+  return [{ id: "1", itemId: "1", itemName: "Laundry", date: daysAgoISO(3), done: true, time: "", notes: "" }];
+}
+
+function nextNumericId(rows: { id: string }[]): string {
+  return String(Math.max(0, ...rows.map((r) => Number(r.id) || 0)) + 1);
+}
+
 export class MemoryRepository implements TrackerRepository {
   private items = seedItems();
   private logs = seedLogs();
+  private chores = seedChores();
+  private choreLogs = seedChoreLogs();
   private summary: AiSummary = {
     short: "You're at a strong streak on Vitamin D3 — nice consistency. Magnesium pairs well with dinner tonight.",
     long: "Over the last 30 days your morning stack is rock solid (Vitamin D3 and Omega-3 near 100%). Magnesium is more hit-or-miss in the evenings — anchoring it to dinner could lift it above 80%. Keep the momentum going.",
@@ -109,5 +126,48 @@ export class MemoryRepository implements TrackerRepository {
   async updateLog(logId: string, patch: { time?: string }) {
     const l = this.logs.find((x) => x.id === logId);
     if (l && patch.time !== undefined) l.time = patch.time;
+  }
+
+  async getChores() { return structuredClone(this.chores); }
+  async getChoreLogs(days: number) {
+    const cutoff = daysAgoISO(days);
+    return this.choreLogs.filter((l) => l.date >= cutoff).map((l) => ({ ...l }));
+  }
+  async addChore(chore: NewChore) {
+    const created: Chore = { ...chore, id: nextNumericId(this.chores), addedDate: istToday() };
+    this.chores.push(created);
+    return structuredClone(created);
+  }
+  async updateChore(id: string, patch: ChorePatch) {
+    const c = this.chores.find((x) => x.id === id);
+    if (c) Object.assign(c, patch);
+  }
+  async setChoreActive(id: string, active: boolean) {
+    const c = this.chores.find((x) => x.id === id);
+    if (!c) return;
+    c.active = active;
+    c.resumeOn = "";
+    if (active) c.resumedDate = istToday();
+  }
+  async scheduleChoreResume(id: string, dateISO: string) {
+    const c = this.chores.find((x) => x.id === id);
+    if (!c) return;
+    c.active = false;
+    c.resumeOn = dateISO;
+  }
+  async deleteChore(id: string) {
+    this.chores = this.chores.filter((c) => c.id !== id);
+  }
+  async logChore(entry: NewChoreLog) {
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? "") ? entry.date! : istToday();
+    const created: LogEntry = {
+      id: nextNumericId(this.choreLogs), itemId: entry.choreId, itemName: entry.choreName,
+      date, done: true, time: "", notes: "",
+    };
+    this.choreLogs.push(created);
+    return { ...created };
+  }
+  async deleteChoreLog(logId: string) {
+    this.choreLogs = this.choreLogs.filter((l) => l.id !== logId);
   }
 }
