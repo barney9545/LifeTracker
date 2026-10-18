@@ -12,8 +12,10 @@ import { buildNightlyReminder, formatChoreReminderTelegram, isReminderEmpty } fr
  */
 export async function runChoresReminder(today: string, dry = false) {
   const repo = getRepository();
-  const [chores, logs] = await Promise.all([repo.getChores(), repo.getChoreLogs(CHORE_LOG_DAYS)]);
-  const r = buildNightlyReminder(chores, logs, today);
+  const [chores, logs, moves] = await Promise.all([
+    repo.getChores(), repo.getChoreLogs(CHORE_LOG_DAYS), repo.getChoreMoves(),
+  ]);
+  const r = buildNightlyReminder(chores, logs, today, moves);
   const summary = {
     today,
     date: r.date,

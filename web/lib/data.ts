@@ -1,6 +1,7 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
 import { getRepository } from "./repository";
+import { DEFAULT_CAPACITY } from "./chores/logic";
 
 /**
  * Cached read layer over the repository. Cross-navigation reads are served from
@@ -10,7 +11,8 @@ import { getRepository } from "./repository";
  */
 export const REPO_TAGS = {
   items: "repo:items", logs: "repo:logs", ai: "repo:ai",
-  chores: "repo:chores", choreLogs: "repo:chore-logs",
+  chores: "repo:chores", choreLogs: "repo:chore-logs", choreMoves: "repo:chore-moves",
+  choreCapacity: "repo:chore-capacity",
 } as const;
 
 export const getItems = unstable_cache(
@@ -41,4 +43,20 @@ export const getChoreLogs = unstable_cache(
   (days: number) => getRepository().getChoreLogs(days),
   ["repo-chore-logs"],
   { tags: [REPO_TAGS.choreLogs], revalidate: 30 },
+);
+
+export const getChoreMoves = unstable_cache(
+  () => getRepository().getChoreMoves(),
+  ["repo-chore-moves"],
+  { tags: [REPO_TAGS.choreMoves], revalidate: 30 },
+);
+
+/** Daily chore capacity (settings key `chore_capacity`), default 100. */
+export const getChoreCapacity = unstable_cache(
+  async () => {
+    const n = Number((await getRepository().getSettings())["chore_capacity"]);
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_CAPACITY;
+  },
+  ["repo-chore-capacity"],
+  { tags: [REPO_TAGS.choreCapacity], revalidate: 60 },
 );

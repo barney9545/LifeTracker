@@ -25,6 +25,8 @@ export interface Chore {
   week: ChoreWeek;
   /** Only meaningful when frequency is "monthly" (e.g. 1 + Mon = "1st Monday"); 1 otherwise. */
   monthWeek: MonthWeek;
+  /** Effort points counted against the day's capacity (default 10). */
+  points: number;
   active: boolean;
   notes: string;
   /** ISO date the chore was added — nothing before it is ever overdue. */
@@ -37,11 +39,25 @@ export interface Chore {
 }
 
 export type NewChore = Omit<Chore, "id" | "addedDate" | "resumedDate" | "resumeOn">;
-export type ChorePatch = Partial<Pick<Chore, "name" | "days" | "frequency" | "week" | "monthWeek" | "notes">>;
+export type ChorePatch = Partial<Pick<Chore, "name" | "days" | "frequency" | "week" | "monthWeek" | "points" | "notes">>;
 
 export interface NewChoreLog {
   choreId: string;
   choreName: string;
   /** ISO date; defaults to IST today. */
   date?: string;
+}
+
+/**
+ * A one-off reschedule of a single occurrence: the chore doesn't happen on
+ * `fromDate` and happens on `toDate` instead. The repeating schedule is untouched.
+ * Invariant (kept by `applyMove`): no move's fromDate equals another move's toDate.
+ */
+export interface ChoreMove {
+  fromDate: string;
+  toDate: string;
+}
+
+export interface StoredChoreMove extends ChoreMove {
+  choreId: string;
 }

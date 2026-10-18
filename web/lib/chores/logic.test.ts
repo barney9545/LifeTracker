@@ -24,7 +24,7 @@ import {
 
 function chore(over: Partial<Chore> = {}): Chore {
   return {
-    id: "c1", name: "Chore", days: [1], frequency: "weekly", week: "A", monthWeek: 1,
+    id: "c1", name: "Chore", days: [1], frequency: "weekly", week: "A", monthWeek: 1, points: 10,
     active: true, notes: "", addedDate: SEED_START, ...over,
   };
 }
