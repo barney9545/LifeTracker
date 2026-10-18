@@ -2,11 +2,12 @@
 
 import { useRef } from "react";
 
+// 1 point ≈ 1 minute of effort, so a day's capacity reads as minutes available.
 const GUIDE: [string, string][] = [
-  ["5", "quick (under 10 min)"],
-  ["15", "medium"],
-  ["30", "heavy or draining"],
-  ["50+", "big job, eats half the evening"],
+  ["5", "5 min · quick (wash a bottle)"],
+  ["15", "15 min · medium (trim nails)"],
+  ["30", "30 min · heavy (change bed sheets)"],
+  ["60", "1 hour · big job"],
 ];
 
 /**
@@ -31,7 +32,8 @@ export default function CapacityGuide({ capacity = 100 }: { capacity?: number })
         onClick={(e) => { if (e.target === e.currentTarget) e.currentTarget.close(); }}
         className="m-auto w-[min(360px,calc(100vw-32px))] rounded-3xl border border-[var(--c-border)] bg-[var(--c-bg)] p-0 text-[var(--c-text)] backdrop:bg-black/60 backdrop:backdrop-blur-sm">
         <div className="p-4">
-          <h3 className="mb-2 text-[15px] font-semibold">How many points?</h3>
+          <h3 className="text-[15px] font-semibold">How many points?</h3>
+          <p className="mb-3 mt-0.5 text-[12px] text-[var(--c-muted)]">1 point ≈ 1 minute of effort.</p>
           <ul className="flex flex-col gap-1.5">
             {GUIDE.map(([pts, what]) => (
               <li key={pts} className="flex gap-3 text-[13px]">
@@ -41,7 +43,7 @@ export default function CapacityGuide({ capacity = 100 }: { capacity?: number })
             ))}
           </ul>
           <p className="mt-3 text-[12px] text-[var(--c-muted)]">
-            A day has {capacity} points; aim to stay under ~70%.
+            A day has {capacity} points (≈ {capacity} min); aim to stay under ~70%.
           </p>
           <button type="button" onClick={() => ref.current?.close()}
             className="mt-3 w-full rounded-xl border border-[var(--c-border)] bg-[var(--c-surface-2)] px-3 py-2.5 text-[13px] font-medium text-[var(--c-text)] transition active:scale-[0.98]">
