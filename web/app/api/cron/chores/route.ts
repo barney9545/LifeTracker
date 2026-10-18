@@ -1,9 +1,6 @@
 import type { NextRequest } from "next/server";
-import { getRepository } from "@/lib/repository";
-import { sendTelegram } from "@/lib/notify";
 import { istToday } from "@/lib/core/logic";
-import { CHORE_LOG_DAYS } from "@/lib/chores/logic";
-import { buildNightlyReminder, formatChoreReminderTelegram, isReminderEmpty } from "@/lib/chores/reminder";
+import { runChoresReminder } from "@/lib/chores/nightly";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +12,9 @@ function isISODate(s: string): boolean {
 }
 
 /**
- * Nightly chores reminder (cron 21:00 IST). Authorize via `Authorization: Bearer ${CRON_SECRET}`.
- * Telegrams tomorrow's chores + anything still outstanding; sends nothing if both are empty.
- * Testing: `?date=yyyy-mm-dd` pretends it's that evening, `?dry=1` returns the message unsent.
+ * Chores reminder on demand. It normally runs from the 20:00 IST reminders cron;
+ * this endpoint is for testing / manual sends. Authorize via `Authorization: Bearer ${CRON_SECRET}`.
+ * `?date=yyyy-mm-dd` pretends it's that evening, `?dry=1` returns the message unsent.
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -34,23 +31,7 @@ export async function GET(req: NextRequest) {
   const dry = params.get("dry") === "1";
 
   try {
-    // Straight from the repository (not the cached read layer) so it's never stale.
-    const repo = getRepository();
-    const [chores, logs] = await Promise.all([repo.getChores(), repo.getChoreLogs(CHORE_LOG_DAYS)]);
-    const r = buildNightlyReminder(chores, logs, today);
-    const summary = {
-      today,
-      date: r.date,
-      tomorrow: r.tomorrow.map((t) => t.chore.name),
-      overdue: r.overdue.map((o) => o.chore.name),
-    };
-
-    if (isReminderEmpty(r)) return Response.json({ ...summary, sent: false, dry });
-    const message = formatChoreReminderTelegram(r);
-    if (dry) return Response.json({ ...summary, sent: false, dry, message });
-
-    await sendTelegram(message);
-    return Response.json({ ...summary, sent: true });
+    return Response.json({ ...(await runChoresReminder(today, dry)), dry });
   } catch (e) {
     return Response.json({ today, error: (e as Error).message }, { status: 500 });
   }

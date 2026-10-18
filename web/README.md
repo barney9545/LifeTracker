@@ -36,14 +36,14 @@ For UI work without Google/Sheets, set `REPOSITORY=memory` and `AUTH_DEV_BYPASS=
 |----------|--------|---------------|
 | ~08:00 | `summary` | Builds the day-based compliance digest, calls Groq (`GROQ_API_KEY`) for the nudge/trend, saves it to the `ai_summary` sheet (so the Today page insight refreshes), and Telegrams it. |
 | ~13:00 | `lunch` | Reminds **Morning + Afternoon** supplements still pending. |
-| ~20:00 | `evening` | Reminds **everything** still pending (any time of day). |
+| ~20:00 | `evening` | Reminds **everything** still pending (any time of day), plus the chores reminder (below). |
 
 Point one free pinger (e.g. cron-job.org, timezone Asia/Kolkata) at the endpoint on cron `0 8,13,20 * * *`. Force an action for testing with `?do=summary|lunch|evening`.
 
 The digest is **in-app** now — the legacy `digest.gs` Apps Script is retired (disable its time trigger to avoid duplicate summaries).
 
 ### Chores reminder
-`/api/cron/chores` Telegrams **tomorrow's chores + anything still outstanding** (incl. today's undone ones); sends nothing if both are empty. Separate cron-job.org job: `0 21 * * *` (Asia/Kolkata), same `Authorization: Bearer <CRON_SECRET>` header. Test with `?dry=1` (returns the message, doesn't send) and `?date=yyyy-mm-dd` (pretend it's that evening). The logic is channel-agnostic: `lib/chores/reminder.ts` builds the data, a separate formatter renders it for Telegram.
+The **20:00** `evening` run also Telegrams a separate chores message: **tomorrow's chores + anything still outstanding** (incl. today's undone ones), or nothing if both are empty. No extra cron needed. `/api/cron/chores` (same Bearer header) runs it on its own for testing: `?dry=1` returns the message without sending, `?date=yyyy-mm-dd` pretends it's that evening. The logic is channel-agnostic: `lib/chores/reminder.ts` builds the data, a separate formatter renders it for Telegram.
 
 ## Security
 Security headers + CSP in `next.config.ts`; `noindex` + `robots.ts` (private app); auth on every mutation; zod validation; secrets server-only.
