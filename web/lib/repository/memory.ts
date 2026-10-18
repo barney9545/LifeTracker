@@ -6,7 +6,7 @@
 import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
 import { daysAgoISO, istStamp, istToday } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
-import type { Chore, ChorePatch, NewChore, NewChoreLog } from "../chores/types";
+import type { Chore, ChoreMove, ChorePatch, NewChore, NewChoreLog, StoredChoreMove } from "../chores/types";
 import { SEED_CHORES } from "../chores/seed";
 
 function seedItems(): TrackableItem[] {
@@ -36,9 +36,13 @@ function seedLogs(): LogEntry[] {
 }
 
 // Dev seed: the real starting list, back-dated 10 days so the UI shows overdue
-// items. Laundry was done 3 days ago; nothing else has been done.
+// items. Laundry was done 3 days ago; nothing else has been done. Laundry + bottle
+// are heavy so Mon/Thu go over capacity (exercises "move to lightest day").
+const DEV_POINTS: Record<string, number> = { Laundry: 60, "Wash bottle": 50, "Trim nails": 5 };
 function seedChores(): Chore[] {
-  return SEED_CHORES.map((c, i) => ({ ...c, id: String(i + 1), addedDate: daysAgoISO(10) }));
+  return SEED_CHORES.map((c, i) => ({
+    ...c, id: String(i + 1), addedDate: daysAgoISO(10), points: DEV_POINTS[c.name] ?? c.points,
+  }));
 }
 function seedChoreLogs(): LogEntry[] {
   return [{ id: "1", itemId: "1", itemName: "Laundry", date: daysAgoISO(3), done: true, time: "", notes: "" }];
@@ -53,6 +57,7 @@ export class MemoryRepository implements TrackerRepository {
   private logs = seedLogs();
   private chores = seedChores();
   private choreLogs = seedChoreLogs();
+  private choreMoves: StoredChoreMove[] = [];
   private summary: AiSummary = {
     short: "You're at a strong streak on Vitamin D3 — nice consistency. Magnesium pairs well with dinner tonight.",
     long: "Over the last 30 days your morning stack is rock solid (Vitamin D3 and Omega-3 near 100%). Magnesium is more hit-or-miss in the evenings — anchoring it to dinner could lift it above 80%. Keep the momentum going.",
@@ -169,5 +174,12 @@ export class MemoryRepository implements TrackerRepository {
   }
   async deleteChoreLog(logId: string) {
     this.choreLogs = this.choreLogs.filter((l) => l.id !== logId);
+  }
+  async getChoreMoves() { return this.choreMoves.map((m) => ({ ...m })); }
+  async setChoreMoves(choreId: string, moves: ChoreMove[]) {
+    this.choreMoves = [
+      ...this.choreMoves.filter((m) => m.choreId !== choreId),
+      ...moves.map((m) => ({ choreId, fromDate: m.fromDate, toDate: m.toDate })),
+    ];
   }
 }

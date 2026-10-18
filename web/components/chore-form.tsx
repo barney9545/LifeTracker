@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Chore, ChoreFrequency } from "@/lib/chores/types";
 import { MONTH_WEEKS, MONTH_WEEK_LABELS, WEEKDAYS, WEEKDAY_LABELS, weekOf } from "@/lib/chores/logic";
 import { istToday } from "@/lib/core/logic";
+import CapacityGuide from "./capacity-guide";
 
 const inputCls =
   "w-full rounded-xl border border-[var(--c-border)] bg-[var(--c-surface-2)] px-3 py-2.5 text-[14px] text-[var(--c-text)] outline-none focus:border-[var(--c-accent)]";
@@ -18,13 +19,17 @@ export default function ChoreForm({
   chore,
   submitLabel,
   onDone,
+  capacity,
 }: {
   action: (formData: FormData) => Promise<{ ok: boolean; error?: string } | void>;
   chore?: Chore;
   submitLabel: string;
   onDone?: () => void;
+  /** Daily capacity, quoted in the points guide. */
+  capacity?: number;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const pointsId = useId();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   // Tracked only to show/hide the A/B week / month pickers; the select itself stays uncontrolled.
@@ -119,6 +124,15 @@ export default function ChoreForm({
           </p>
         </fieldset>
       )}
+
+      <div>
+        <div className="mb-1 flex items-center gap-0.5">
+          <label htmlFor={pointsId} className="text-[12px] text-[var(--c-muted)]">Capacity points</label>
+          <CapacityGuide capacity={capacity} />
+        </div>
+        <input id={pointsId} name="points" type="number" inputMode="numeric" min={0} max={200} step={1} required
+          defaultValue={chore?.points ?? 10} className={inputCls} />
+      </div>
 
       <div>
         <label className={labelCls}>Notes</label>

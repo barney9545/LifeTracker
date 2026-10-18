@@ -8,7 +8,7 @@
  */
 import type { LogEntry } from "../core/types";
 import { addDaysISO, choresDueOn, outstandingSince, WEEKDAY_LABELS, weekdayOf } from "./logic";
-import type { Chore } from "./types";
+import type { Chore, StoredChoreMove } from "./types";
 
 export interface NightlyReminder {
   /** Tomorrow, ISO yyyy-mm-dd. */
@@ -22,14 +22,16 @@ export interface NightlyReminder {
 
 /** Built on the evening of `today`. A chore both overdue and due tomorrow is listed
  *  once, under tomorrow and flagged overdue — one completion clears both. */
-export function buildNightlyReminder(chores: Chore[], logs: LogEntry[], today: string): NightlyReminder {
+export function buildNightlyReminder(
+  chores: Chore[], logs: LogEntry[], today: string, moves: StoredChoreMove[] = [],
+): NightlyReminder {
   const date = addDaysISO(today, 1);
   const since = new Map<string, string>();
   for (const chore of chores) {
-    const s = outstandingSince(chore, logs, today);
+    const s = outstandingSince(chore, logs, today, moves);
     if (s !== null) since.set(chore.id, s);
   }
-  const tomorrow = choresDueOn(chores, date).map((chore) => ({ chore, overdueSince: since.get(chore.id) ?? null }));
+  const tomorrow = choresDueOn(chores, date, moves).map((chore) => ({ chore, overdueSince: since.get(chore.id) ?? null }));
   const listed = new Set(tomorrow.map((t) => t.chore.id));
   const overdue = chores
     .filter((c) => since.has(c.id) && !listed.has(c.id))

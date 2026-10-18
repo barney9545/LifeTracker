@@ -7,7 +7,7 @@
  * with zero changes to screens, actions, or core logic.
  */
 import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
-import type { Chore, ChorePatch, NewChore, NewChoreLog } from "../chores/types";
+import type { Chore, ChoreMove, ChorePatch, NewChore, NewChoreLog, StoredChoreMove } from "../chores/types";
 
 // `addedDate` is stamped by the repository on insert, so callers don't supply it.
 export type NewItem = Omit<TrackableItem, "id" | "addedDate">;
@@ -75,4 +75,8 @@ export interface TrackerRepository {
   logChore(entry: NewChoreLog): Promise<LogEntry>;
   /** Undo a completion. */
   deleteChoreLog(logId: string): Promise<void>;
+  /** All one-off reschedules (`chore_moves` tab). */
+  getChoreMoves(): Promise<StoredChoreMove[]>;
+  /** Replace one chore's moves wholesale (moving and undo both compute the full list via applyMove). */
+  setChoreMoves(choreId: string, moves: ChoreMove[]): Promise<void>;
 }

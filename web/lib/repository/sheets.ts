@@ -9,7 +9,8 @@
  *   ai_summary:  short,long,updated_at,date
  *   chores:      id,name,days,frequency,week,active,added_date,resumed_date,resume_on,notes
  *                ,month_week (days like "Mon,Thu"; frequency weekly|biweekly|monthly;
- *                week A|B; month_week 1–4 or "last")
+ *                week A|B; month_week 1–4 or "last"; points = effort, blank → 10)
+ *   chore_moves: chore_id,from_date,to_date (one-off reschedules)
  *   chore_log:   id,date,chore_id,chore_name,done,notes
  */
 import "server-only";
@@ -18,12 +19,15 @@ import { JWT } from "google-auth-library";
 import type { AiSummary, Frequency, LogEntry, TimeOfDay, TrackableItem } from "../core/types";
 import { daysAgoISO, istStamp, istToday, todayISO } from "../core/logic";
 import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
-import type { Chore, ChorePatch, ChoreWeek, MonthWeek, NewChore, NewChoreLog, Weekday } from "../chores/types";
+import type {
+  Chore, ChoreMove, ChorePatch, ChoreWeek, MonthWeek, NewChore, NewChoreLog, StoredChoreMove, Weekday,
+} from "../chores/types";
 import { SEED_CHORES, SEED_START } from "../chores/seed";
 
 const CHORE_HEADERS = [
-  "id", "name", "days", "frequency", "week", "active", "added_date", "resumed_date", "resume_on", "notes", "month_week",
+  "id", "name", "days", "frequency", "week", "active", "added_date", "resumed_date", "resume_on", "notes", "month_week", "points",
 ];
+const CHORE_MOVE_HEADERS = ["chore_id", "from_date", "to_date"];
 const CHORE_LOG_HEADERS = ["id", "date", "chore_id", "chore_name", "done", "notes"];
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -51,6 +55,13 @@ function parseMonthWeek(v: unknown): MonthWeek {
   return n === 2 || n === 3 || n === 4 ? n : 1;
 }
 
+/** Effort points; blank / junk → 10 (rows created before capacity existed). */
+function parsePoints(v: unknown): number {
+  const s = String(v ?? "").trim();
+  const n = Number(s);
+  return s !== "" && Number.isFinite(n) && n >= 0 ? Math.round(n) : 10;
+}
+
 function formatMonthWeek(w: MonthWeek): string {
   return w === -1 ? "last" : String(w);
 }
@@ -64,6 +75,7 @@ function rowToChore(r: GoogleSpreadsheetRow): Chore {
     frequency: freq === "biweekly" || freq === "monthly" ? freq : "weekly",
     week: (String(r.get("week") ?? "").trim().toUpperCase() === "B" ? "B" : "A") as ChoreWeek,
     monthWeek: parseMonthWeek(r.get("month_week")),
+    points: parsePoints(r.get("points")),
     active: bool(r.get("active")),
     notes: String(r.get("notes") ?? ""),
     addedDate: normDate(r.get("added_date")),
@@ -418,11 +430,16 @@ export class SheetsRepository implements TrackerRepository {
               id: String(i + 1), name: c.name, days: formatDays(c.days), frequency: c.frequency,
               week: c.week, active: c.active ? "TRUE" : "FALSE", added_date: SEED_START,
               resumed_date: "", resume_on: "", notes: c.notes, month_week: formatMonthWeek(c.monthWeek),
+              points: String(c.points),
             })),
           );
         } else {
-          // Tabs created before monthly chores existed lack this column.
+          // Tabs created before monthly chores / capacity existed lack these columns.
           await this.ensureColumn(doc.sheetsByTitle["chores"], "month_week");
+          await this.ensureColumn(doc.sheetsByTitle["chores"], "points");
+        }
+        if (!doc.sheetsByTitle["chore_moves"]) {
+          await doc.addSheet({ title: "chore_moves", headerValues: CHORE_MOVE_HEADERS });
         }
         if (!doc.sheetsByTitle["chore_log"]) {
           await doc.addSheet({ title: "chore_log", headerValues: CHORE_LOG_HEADERS });
@@ -463,6 +480,7 @@ export class SheetsRepository implements TrackerRepository {
       id, name: chore.name, days: formatDays(chore.days), frequency: chore.frequency,
       week: chore.week, active: chore.active ? "TRUE" : "FALSE", added_date: addedDate,
       resumed_date: "", resume_on: "", notes: chore.notes ?? "", month_week: formatMonthWeek(chore.monthWeek),
+      points: String(chore.points),
     });
     return { ...chore, id, addedDate };
   }
@@ -475,6 +493,7 @@ export class SheetsRepository implements TrackerRepository {
     if (patch.frequency !== undefined) row.set("frequency", patch.frequency);
     if (patch.week !== undefined) row.set("week", patch.week);
     if (patch.monthWeek !== undefined) row.set("month_week", formatMonthWeek(patch.monthWeek));
+    if (patch.points !== undefined) row.set("points", String(patch.points));
     if (patch.notes !== undefined) row.set("notes", patch.notes);
     await row.save();
   }
@@ -515,5 +534,29 @@ export class SheetsRepository implements TrackerRepository {
     const rows = await (await this.tab("chore_log")).getRows();
     const row = rows.find((r) => String(r.get("id")) === String(logId));
     if (row) await row.delete();
+  }
+
+  async getChoreMoves(): Promise<StoredChoreMove[]> {
+    await this.ensureChoreTabs();
+    const rows = await (await this.tab("chore_moves")).getRows();
+    return rows
+      .map((r) => ({
+        choreId: String(r.get("chore_id") ?? ""),
+        fromDate: normDate(r.get("from_date")),
+        toDate: normDate(r.get("to_date")),
+      }))
+      .filter((m) => m.choreId && /^\d{4}-\d{2}-\d{2}$/.test(m.fromDate) && /^\d{4}-\d{2}-\d{2}$/.test(m.toDate));
+  }
+
+  async setChoreMoves(choreId: string, moves: ChoreMove[]): Promise<void> {
+    await this.ensureChoreTabs();
+    const sheet = await this.tab("chore_moves");
+    const rows = await sheet.getRows();
+    // Delete bottom-up so earlier row indexes stay valid, then append the new set.
+    const mine = rows.filter((r) => String(r.get("chore_id")) === String(choreId));
+    for (const r of mine.reverse()) await r.delete();
+    if (moves.length) {
+      await sheet.addRows(moves.map((m) => ({ chore_id: choreId, from_date: m.fromDate, to_date: m.toDate })));
+    }
   }
 }

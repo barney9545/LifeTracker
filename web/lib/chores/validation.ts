@@ -18,6 +18,8 @@ export const choreInputSchema = z
     monthWeek: z.coerce.number().pipe(z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(-1)]))
       .catch(1 as MonthWeek),
     monthDay: z.coerce.number().catch(1),
+    points: z.coerce.number({ message: "Points must be a number" }).int("Points must be a whole number")
+      .min(0, "Points can't be negative").max(200, "Points must be 200 or less"),
     notes: z.string().max(1000, "Notes are too long").optional().transform((v) => v ?? ""),
   })
   // Monthly chores take their one day from the month picker; the A/B week only
@@ -46,6 +48,7 @@ export function parseChoreForm(formData: FormData):
     week: formData.get("week") ?? "A",
     monthWeek: formData.get("month_week") ?? "1",
     monthDay: formData.get("month_day") ?? "1",
+    points: formData.get("points") ?? "10",
     notes: formData.get("notes") ?? "",
   });
   if (!parsed.success) {
