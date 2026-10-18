@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Chore, ChoreFrequency } from "@/lib/chores/types";
-import { WEEKDAYS, WEEKDAY_LABELS, weekOf } from "@/lib/chores/logic";
+import { MONTH_WEEKS, MONTH_WEEK_LABELS, WEEKDAYS, WEEKDAY_LABELS, weekOf } from "@/lib/chores/logic";
 import { istToday } from "@/lib/core/logic";
 
 const inputCls =
@@ -27,7 +27,7 @@ export default function ChoreForm({
   const formRef = useRef<HTMLFormElement>(null);
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  // Tracked only to show/hide the A/B week choice; the select itself stays uncontrolled.
+  // Tracked only to show/hide the A/B week / month pickers; the select itself stays uncontrolled.
   const [frequency, setFrequency] = useState<ChoreFrequency>(chore?.frequency ?? "weekly");
   const thisWeek = weekOf(istToday());
   const nextWeek = thisWeek === "A" ? "B" : "A";
@@ -35,7 +35,7 @@ export default function ChoreForm({
   // Catch "no days" before submitting: a form action resets the fields, so a
   // server-side error here would wipe what was typed.
   function preCheck(e: React.FormEvent<HTMLFormElement>) {
-    if (new FormData(e.currentTarget).getAll("days").length === 0) {
+    if (frequency !== "monthly" && new FormData(e.currentTarget).getAll("days").length === 0) {
       e.preventDefault();
       setError("Pick at least one day");
     }
@@ -62,27 +62,45 @@ export default function ChoreForm({
         <input name="name" required maxLength={80} defaultValue={chore?.name ?? ""} className={inputCls} />
       </div>
 
-      <fieldset>
-        <legend className={labelCls}>Days *</legend>
-        <div className="flex gap-1.5">
-          {WEEKDAYS.map((d) => (
-            <label key={d} className={chipCls}>
-              <input type="checkbox" name="days" value={d} defaultChecked={chore?.days.includes(d)}
-                className="sr-only" />
-              {WEEKDAY_LABELS[d]}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-
       <div>
         <label className={labelCls}>Repeats</label>
         <select name="frequency" defaultValue={chore?.frequency ?? "weekly"}
           onChange={(e) => setFrequency(e.target.value as ChoreFrequency)} className={inputCls}>
           <option value="weekly">Weekly</option>
           <option value="biweekly">Every 2 weeks</option>
+          <option value="monthly">Monthly</option>
         </select>
       </div>
+
+      {frequency === "monthly" ? (
+        <div>
+          <label className={labelCls}>On the</label>
+          <div className="grid grid-cols-2 gap-3">
+            <select name="month_week" aria-label="Which week of the month"
+              defaultValue={String(chore?.monthWeek ?? 1)} className={inputCls}>
+              {MONTH_WEEKS.map((w) => <option key={w} value={w}>{MONTH_WEEK_LABELS[w]}</option>)}
+            </select>
+            <select name="month_day" aria-label="Day of the week"
+              defaultValue={String(chore?.days[0] ?? 1)} className={inputCls}>
+              {WEEKDAYS.map((d) => <option key={d} value={d}>{WEEKDAY_LABELS[d]}</option>)}
+            </select>
+          </div>
+          <p className="mt-1.5 text-[11px] text-[var(--c-muted)]">of every month, e.g. 1st Mon or Last Fri.</p>
+        </div>
+      ) : (
+        <fieldset>
+          <legend className={labelCls}>Days *</legend>
+          <div className="flex gap-1">
+            {WEEKDAYS.map((d) => (
+              <label key={d} className={`${chipCls} ${d > 5 ? "opacity-80" : ""}`}>
+                <input type="checkbox" name="days" value={d} defaultChecked={chore?.days.includes(d)}
+                  className="sr-only" />
+                {WEEKDAY_LABELS[d]}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+      )}
 
       {frequency === "biweekly" && (
         <fieldset>

@@ -4,10 +4,13 @@
  * supplement tracker uses, just in its own `chore_log` tab.
  */
 
-/** ISO weekday: 1 = Monday … 5 = Friday. New chores are weekday-only. */
-export type Weekday = 1 | 2 | 3 | 4 | 5;
+/** ISO weekday: 1 = Monday … 7 = Sunday. (Weekdays are preferred, weekends allowed.) */
+export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
-export type ChoreFrequency = "weekly" | "biweekly";
+export type ChoreFrequency = "weekly" | "biweekly" | "monthly";
+
+/** Which occurrence of the weekday in the month a monthly chore lands on; -1 = last. */
+export type MonthWeek = 1 | 2 | 3 | 4 | -1;
 
 /** Which alternate week a biweekly chore lands on (see WEEK_A_START). */
 export type ChoreWeek = "A" | "B";
@@ -15,11 +18,13 @@ export type ChoreWeek = "A" | "B";
 export interface Chore {
   id: string;
   name: string;
-  /** Days of the week it's scheduled on, ascending. */
+  /** Days of the week it's scheduled on, ascending. Monthly chores use exactly one. */
   days: Weekday[];
   frequency: ChoreFrequency;
   /** Only meaningful when frequency is "biweekly"; "A" otherwise. */
   week: ChoreWeek;
+  /** Only meaningful when frequency is "monthly" (e.g. 1 + Mon = "1st Monday"); 1 otherwise. */
+  monthWeek: MonthWeek;
   active: boolean;
   notes: string;
   /** ISO date the chore was added — nothing before it is ever overdue. */
@@ -32,7 +37,7 @@ export interface Chore {
 }
 
 export type NewChore = Omit<Chore, "id" | "addedDate" | "resumedDate" | "resumeOn">;
-export type ChorePatch = Partial<Pick<Chore, "name" | "days" | "frequency" | "week" | "notes">>;
+export type ChorePatch = Partial<Pick<Chore, "name" | "days" | "frequency" | "week" | "monthWeek" | "notes">>;
 
 export interface NewChoreLog {
   choreId: string;

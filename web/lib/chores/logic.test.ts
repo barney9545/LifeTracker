@@ -12,6 +12,7 @@ import {
   describeSchedule,
   isActiveOn,
   isDueOn,
+  isMonthWeek,
   isScheduledOn,
   outstandingSince,
   scheduleStart,
@@ -23,7 +24,7 @@ import {
 
 function chore(over: Partial<Chore> = {}): Chore {
   return {
-    id: "c1", name: "Chore", days: [1], frequency: "weekly", week: "A",
+    id: "c1", name: "Chore", days: [1], frequency: "weekly", week: "A", monthWeek: 1,
     active: true, notes: "", addedDate: SEED_START, ...over,
   };
 }
@@ -448,5 +449,55 @@ describe("describeSchedule", () => {
   });
   it("handles no days", () => {
     assert.equal(describeSchedule(chore({ days: [] })), "No days · weekly");
+  });
+});
+
+describe("monthly", () => {
+  const FIRST_MON = chore({ frequency: "monthly", monthWeek: 1, days: [1] });
+  const LAST_FRI = chore({ frequency: "monthly", monthWeek: -1, days: [5] });
+
+  it("isMonthWeek: Nth and last occurrence of a weekday", () => {
+    assert.equal(isMonthWeek("2026-11-02", 1), true); // Nov Mondays: 2, 9, 16, 23, 30
+    assert.equal(isMonthWeek("2026-11-09", 2), true);
+    assert.equal(isMonthWeek("2026-11-23", 4), true);
+    assert.equal(isMonthWeek("2026-11-23", -1), false); // a 5th Monday follows
+    assert.equal(isMonthWeek("2026-11-30", -1), true);
+    assert.equal(isMonthWeek("2026-11-30", 4), false);
+    assert.equal(isMonthWeek("2026-10-26", 4), true); // Oct: 4th Monday is also the last
+    assert.equal(isMonthWeek("2026-10-26", -1), true);
+  });
+
+  it("1st Monday lands only on the first Monday of each month", () => {
+    assert.deepEqual(
+      ["2026-11-02", "2026-11-09", "2026-12-07", "2027-01-04", "2027-01-05"].map((d) => isScheduledOn(FIRST_MON, d)),
+      [true, false, true, true, false],
+    );
+  });
+
+  it("last Friday, across a year boundary", () => {
+    for (const d of ["2026-10-30", "2026-11-27", "2026-12-25", "2027-01-29"]) assert.equal(isScheduledOn(LAST_FRI, d), true, d);
+    for (const d of ["2026-10-23", "2026-12-18", "2027-01-22"]) assert.equal(isScheduledOn(LAST_FRI, d), false, d);
+  });
+
+  it("a missed monthly chore stays overdue until done, then waits for next month", () => {
+    assert.equal(outstandingSince(FIRST_MON, [], "2026-11-10"), "2026-11-02");
+    const logs = [done("c1", "2026-11-10")];
+    assert.equal(outstandingSince(FIRST_MON, logs, "2026-11-10"), null);
+    assert.equal(outstandingSince(FIRST_MON, logs, "2026-12-06"), null);
+    assert.equal(outstandingSince(FIRST_MON, logs, "2026-12-07"), "2026-12-07");
+  });
+
+  it("describeSchedule", () => {
+    assert.equal(describeSchedule(FIRST_MON), "1st Mon · monthly");
+    assert.equal(describeSchedule(LAST_FRI), "Last Fri · monthly");
+  });
+});
+
+describe("weekend days", () => {
+  it("a Saturday chore is due on Saturdays", () => {
+    const SAT = chore({ days: [6] });
+    assert.equal(isDueOn(SAT, "2026-10-24"), true);
+    assert.equal(isDueOn(SAT, "2026-10-25"), false);
+    assert.equal(describeSchedule(SAT), "Sat · weekly");
   });
 });
