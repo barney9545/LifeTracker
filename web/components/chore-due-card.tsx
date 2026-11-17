@@ -7,7 +7,7 @@ import ChoreDoneCard from "./chore-done-card";
 
 /** An outstanding chore (overdue or due today) with a one-tap check, like DueCard. */
 export default function ChoreDueCard({
-  id, name, detail, overdueSince, movedFrom, reschedule,
+  id, name, detail, overdueSince, movedFrom, reschedule, error,
 }: {
   id: string;
   name: string;
@@ -16,8 +16,10 @@ export default function ChoreDueCard({
   overdueSince?: string;
   /** e.g. "Mon 19 Oct" when today's occurrence was moved here from that day. */
   movedFrom?: string;
-  /** Reschedule control, shown left of the check (hidden once marked). */
+  /** Reschedule (and, when overdue, mark-missed) controls, shown left of the check (hidden once marked). */
   reschedule?: React.ReactNode;
+  /** A failed action's message, shown under the detail line. */
+  error?: string;
 }) {
   const [pending, startTransition] = useTransition();
   // Once marked, hand off to ChoreDoneCard (with undo) using the new log id.
@@ -59,6 +61,7 @@ export default function ChoreDueCard({
           )}
           <span className="truncate text-[12px] text-[var(--c-muted)]">{detail}</span>
         </div>
+        {error && <p className="mt-0.5 truncate text-[12px] text-[#f87171]">{error}</p>}
       </div>
       {!marked && reschedule}
       <button onClick={handleDone} disabled={pending || marked}

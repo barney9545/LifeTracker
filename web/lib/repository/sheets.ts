@@ -23,6 +23,7 @@ import type {
   Chore, ChoreMove, ChorePatch, ChoreWeek, MonthWeek, NewChore, NewChoreLog, StoredChoreMove, Weekday,
 } from "../chores/types";
 import { SEED_CHORES, SEED_START } from "../chores/seed";
+import { MISSED_NOTE } from "../chores/logic";
 
 const CHORE_HEADERS = [
   "id", "name", "days", "frequency", "week", "active", "added_date", "resumed_date", "resume_on", "notes", "month_week", "points",
@@ -525,8 +526,12 @@ export class SheetsRepository implements TrackerRepository {
     const sheet = await this.tab("chore_log");
     const id = nextId(await sheet.getRows());
     const date = /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? "") ? entry.date! : istToday();
-    await sheet.addRow({ id, date, chore_id: entry.choreId, chore_name: entry.choreName, done: "TRUE", notes: "" });
-    return { id, itemId: entry.choreId, itemName: entry.choreName, date, done: true, time: "", notes: "" };
+    const done = entry.done ?? true;
+    const notes = done ? "" : MISSED_NOTE;
+    await sheet.addRow({
+      id, date, chore_id: entry.choreId, chore_name: entry.choreName, done: done ? "TRUE" : "FALSE", notes,
+    });
+    return { id, itemId: entry.choreId, itemName: entry.choreName, date, done, time: "", notes };
   }
 
   async deleteChoreLog(logId: string): Promise<void> {

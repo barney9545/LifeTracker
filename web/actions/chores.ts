@@ -6,7 +6,7 @@ import { getSession } from "@/lib/auth";
 import { dateSchema } from "@/lib/validation";
 import { parseChoreForm } from "@/lib/chores/validation";
 import { istToday } from "@/lib/core/logic";
-import { applyMove, isScheduledOn } from "@/lib/chores/logic";
+import { CHORE_LOG_DAYS, applyMove, isScheduledOn, missedMarkDate } from "@/lib/chores/logic";
 import type { ChoreMove } from "@/lib/chores/types";
 import { z } from "zod";
 import { REPO_TAGS } from "@/lib/data";
@@ -37,6 +37,29 @@ export async function markChoreDone(choreId: string, choreName: string): Promise
   return entry.id;
 }
 
+export type MissedResult = { ok: true; logId: string } | { ok: false; error: string };
+
+/**
+ * Mark an overdue chore as missed: logs a done=false entry on its latest missed
+ * day, which clears every overdue occurrence without counting it as done. Today's
+ * occurrence (if it's also due today) stays on the list. Undo with `undoChoreDone`.
+ */
+export async function markChoreMissed(choreId: string, choreName: string): Promise<MissedResult> {
+  await guard();
+  const repo = getRepository();
+  const [chores, logs, moves] = await Promise.all([
+    repo.getChores(), repo.getChoreLogs(CHORE_LOG_DAYS), repo.getChoreMoves(),
+  ]);
+  const chore = chores.find((c) => c.id === choreId);
+  if (!chore) return { ok: false, error: "Chore not found" };
+  const date = missedMarkDate(chore, logs, istToday(), moves);
+  if (!date) return { ok: false, error: "Nothing overdue to mark" };
+  const entry = await repo.logChore({ choreId, choreName, date, done: false });
+  revalidateChores();
+  return { ok: true, logId: entry.id };
+}
+
+/** Undo a completion or a missed mark (deletes the log row). */
 export async function undoChoreDone(logId: string) {
   await guard();
   await getRepository().deleteChoreLog(logId);

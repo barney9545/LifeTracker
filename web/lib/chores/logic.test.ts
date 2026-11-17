@@ -21,6 +21,7 @@ import {
   isMonthWeek,
   isScheduledOn,
   lightestDay,
+  missedMarkDate,
   movedFrom,
   occursOn,
   outstandingDates,
@@ -236,6 +237,42 @@ describe("outstandingSince", () => {
   });
 });
 
+describe("mark missed", () => {
+  const missed = (choreId: string, date: string) => done(choreId, date, { done: false, notes: "missed" });
+
+  it("is logged on the latest missed day before today", () => {
+    // Laundry (Mon/Thu) missed 19, 22, 26; also due today, Thu 29.
+    assert.equal(missedMarkDate(LAUNDRY, [], "2026-10-29"), "2026-10-26");
+    assert.equal(missedMarkDate(LAUNDRY, [], "2026-10-27"), "2026-10-26");
+  });
+  it("is null when nothing before today is outstanding", () => {
+    assert.equal(missedMarkDate(LAUNDRY, [], "2026-10-19"), null); // due today only
+    assert.equal(missedMarkDate(LAUNDRY, [done(LAUNDRY.id, "2026-10-26")], "2026-10-27"), null);
+  });
+  it("clears every overdue day but keeps today's occurrence due", () => {
+    const logs = [missed(LAUNDRY.id, "2026-10-26")];
+    const day = choresForDay([LAUNDRY], logs, "2026-10-29");
+    assert.deepEqual(day.overdue, []);
+    assert.deepEqual(names(day.due), ["Laundry"]);
+    assert.deepEqual(day.done, []);
+  });
+  it("leaves nothing outstanding when today isn't a scheduled day", () => {
+    const logs = [missed(LAUNDRY.id, "2026-10-26")];
+    assert.equal(outstandingSince(LAUNDRY, logs, "2026-10-27"), null);
+    const day = choresForDay([LAUNDRY], logs, "2026-10-27");
+    assert.deepEqual([day.overdue, day.due, day.done], [[], [], []]);
+  });
+  it("never counts as done", () => {
+    const logs = [missed(LAUNDRY.id, "2026-10-26")];
+    assert.equal(completedLoadOn([LAUNDRY], logs, "2026-10-26"), 0);
+    assert.deepEqual(choresForDay([LAUNDRY], logs, "2026-10-26").done, []);
+  });
+  it("later days go overdue again as usual", () => {
+    const logs = [missed(LAUNDRY.id, "2026-10-26")];
+    assert.equal(outstandingSince(LAUNDRY, logs, "2026-10-30"), "2026-10-29");
+  });
+});
+
 describe("no early credit", () => {
   it("done Wednesday does not cover Thursday", () => {
     const logs = [done(LAUNDRY.id, "2026-10-19"), done(LAUNDRY.id, "2026-10-21")];
@@ -410,7 +447,7 @@ describe("log matching", () => {
     assert.equal(outstandingSince(LAUNDRY, logs, "2026-10-20"), "2026-10-19");
     assert.deepEqual(names(choresForDay([LAUNDRY], logs, "2026-10-19").due), ["Laundry"]);
   });
-  it("ignores done:false entries", () => {
+  it("ignores untagged done:false entries (only \"missed\" marks settle)", () => {
     const logs = [done(LAUNDRY.id, "2026-10-19", { done: false })];
     assert.equal(outstandingSince(LAUNDRY, logs, "2026-10-19"), "2026-10-19");
     assert.deepEqual(choresForDay([LAUNDRY], logs, "2026-10-19").done, []);

@@ -1,21 +1,25 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { restoreChoreMoves } from "@/actions/chores";
+import { restoreChoreMoves, undoChoreDone } from "@/actions/chores";
 import type { ChoreMove } from "@/lib/chores/types";
 import { SectionLabel } from "./ui";
 import ChoreDueCard from "./chore-due-card";
 import RescheduleButton from "./reschedule-button";
+import MissedButton from "./missed-button";
 import { shortDay, type ChoreItem } from "./reschedule-data";
 
 type Section = "overdue" | "due";
-interface Moved { item: ChoreItem; section: Section; index: number; to: string; previous: ChoreMove[] }
+/** What was just done to a row: rescheduled (undo restores the moves) or marked missed (undo deletes the log). */
+type Action = { kind: "moved"; to: string; previous: ChoreMove[] } | { kind: "missed"; logId: string };
+interface Moved { item: ChoreItem; section: Section; index: number; action: Action }
 
 /**
  * The Overdue + Today sections of the Home chores panel. Client-side so a
- * rescheduled chore can stay in place as "Moved to … · Undo": the move
- * revalidates Home and the chore drops out of today's list, so the row is kept
- * here (at its old position) until it's undone or the page is left.
+ * rescheduled (or marked-missed) chore can stay in place as "Moved to … · Undo"
+ * / "Marked missed · Undo": the change revalidates Home and the chore drops out
+ * of today's list, so the row is kept here (at its old position) until it's
+ * undone or the page is left.
  */
 export default function RescheduleList({
   overdue, due, today, capacity,
@@ -26,6 +30,15 @@ export default function RescheduleList({
   capacity: number;
 }) {
   const [moved, setMoved] = useState<Record<string, Moved>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  function settle(item: ChoreItem, items: ChoreItem[], section: Section, action: Action) {
+    setErrors((prev) => ({ ...prev, [item.id]: "" }));
+    setMoved((prev) => ({
+      ...prev,
+      [item.id]: { item, section, index: items.findIndex((i) => i.id === item.id), action },
+    }));
+  }
 
   function rows(items: ChoreItem[], section: Section) {
     const out = items.map((item) => ({ item, moved: moved[item.id] }));
@@ -41,13 +54,17 @@ export default function RescheduleList({
         })} />
       : (
         <ChoreDueCard key={item.id} id={item.id} name={item.name} detail={item.detail}
-          overdueSince={item.overdueSince} movedFrom={item.movedFrom}
+          overdueSince={item.overdueSince} movedFrom={item.movedFrom} error={errors[item.id] || undefined}
           reschedule={
-            <RescheduleButton item={item} today={today} capacity={capacity}
-              onMoved={(to, previous) => setMoved((prev) => ({
-                ...prev,
-                [item.id]: { item, section, index: items.findIndex((i) => i.id === item.id), to, previous },
-              }))} />
+            <>
+              {section === "overdue" && (
+                <MissedButton id={item.id} name={item.name}
+                  onMissed={(logId) => settle(item, items, section, { kind: "missed", logId })}
+                  onError={(msg) => setErrors((prev) => ({ ...prev, [item.id]: msg }))} />
+              )}
+              <RescheduleButton item={item} today={today} capacity={capacity}
+                onMoved={(to, previous) => settle(item, items, section, { kind: "moved", to, previous })} />
+            </>
           } />
       ));
   }
@@ -73,7 +90,7 @@ export default function RescheduleList({
   );
 }
 
-/** A just-rescheduled chore, kept in place with Undo (guards against misclicks). */
+/** A just-rescheduled / marked-missed chore, kept in place with Undo (guards against misclicks). */
 function MovedRow({ moved, onUndone }: { moved: Moved; onUndone: () => void }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState(false);
@@ -83,7 +100,13 @@ function MovedRow({ moved, onUndone }: { moved: Moved; onUndone: () => void }) {
     setError(false);
     startTransition(async () => {
       try {
-        const r = await restoreChoreMoves(moved.item.id, moved.previous);
+        const a = moved.action;
+        if (a.kind === "missed") {
+          await undoChoreDone(a.logId);
+          onUndone(); // the revalidated page puts the chore back under Overdue
+          return;
+        }
+        const r = await restoreChoreMoves(moved.item.id, a.previous);
         if (r.ok) onUndone(); // the revalidated page puts the chore back
         else setError(true);
       } catch {
@@ -98,11 +121,13 @@ function MovedRow({ moved, onUndone }: { moved: Moved; onUndone: () => void }) {
       <div className="min-w-0 flex-1">
         <span className="block truncate text-[15px] font-medium text-[var(--c-muted)]">{moved.item.name}</span>
         <p className="truncate text-[12px] text-[var(--c-muted)]">
-          {error ? "Couldn't undo — try again" : <>Moved to <span className="font-medium text-[var(--c-text)]">{shortDay(moved.to)}</span></>}
+          {error ? "Couldn't undo — try again"
+            : moved.action.kind === "missed" ? <span className="font-medium text-[var(--c-due)]">Marked missed</span>
+            : <>Moved to <span className="font-medium text-[var(--c-text)]">{shortDay(moved.action.to)}</span></>}
         </p>
       </div>
       <button onClick={handleUndo} disabled={pending}
-        aria-label={`Undo reschedule of ${moved.item.name}`}
+        aria-label={`Undo ${moved.action.kind === "missed" ? "missed mark" : "reschedule"} of ${moved.item.name}`}
         className="shrink-0 rounded-full px-2.5 py-1 text-[12px] font-medium text-[var(--c-accent)] transition active:scale-90 disabled:opacity-40">
         {pending ? "Undoing…" : "Undo"}
       </button>
