@@ -1,308 +1,442 @@
-# Plan: one Android app for habits, chores and money
+# Plan: one Android app for your day, your home and your money
 
-Status: **draft for your review**, nothing built yet. Written 17 Nov 2026 after
-reading both repos end to end.
+Status: **draft v2 for your review**. Nothing is built yet. v2 redesigns the app around how
+you use it, instead of copying both apps screen for screen, and adds notifications.
 
 ---
 
 ## 1. In short
 
-- **One app, installed from an APK file.** It has no login, no account and no server. All data lives in one
-  database file on the phone.
-- It **replaces both web apps**: LifeTracker (supplements, chores) and
-  FinanceTracker (bank messages, review, spending, balances, flatmate splits).
-- **The app reads bank messages itself.** It watches phone notifications, so MacroDroid,
-  Vercel, cron-job.org, Telegram, Google Sheets and Google sign-in are no longer needed.
-- **Most of the code comes across.** The scheduling, chore, spending, balance and rules
-  logic is already written as plain functions with about 4,900 lines of tests,
-  and those move over almost unchanged. The parts that go are the ones that only exist
-  to work around Google Sheets and hosting.
-- **Rough size:** about half the code of the two apps combined (≈17,000 lines today
-  without tests → ≈8,500), with an APK under 10 MB.
+- **One app, installed from an APK file.** It has no login, no account and no server, and all data stays on the phone.
+- **One simple model for everything:** *routines* (things you do), *money* (things you
+  spend) and *rules* (how incoming things get filed). Supplements, chores, bills to
+  confirm and Splitwise to-dos are all just routines or money, shown the same way.
+- **Three tabs instead of nine screens:**
+  - **Today** is everything that needs you now.
+  - **Insights** is how it's going.
+  - **Setup** is what you track.
+
+  One **+** button covers quick adds.
+- **Notifications come from the phone itself.** Two or three a day by default, grouped, with
+  buttons that work without opening the app. No server and no Google push service.
+- **Bank messages are read on the phone** from your notifications. MacroDroid, Vercel,
+  cron jobs, Telegram, Google Sheets and Google sign-in all go away.
+- **The logic and its ~4,900 lines of tests come across.** The screens are rebuilt to be simpler.
+  Expect about half of today's code (≈17,000 → ≈7,500 lines without tests) and an APK under 10 MB.
 
 ---
 
 ## 2. Decisions I need from you
 
-My recommendation is listed first in each row. Everything below assumes these
-recommendations; changing one changes the plan as noted.
+My recommendation is listed first. The plan assumes these recommendations.
 
-| # | Question | Recommended | Alternative and what it changes |
+| # | Question | Recommended | Alternative |
 |---|---|---|---|
-| 1 | **How bank messages are read.** Today an AI service (Groq) reads each message, which means the text leaves the phone. | **Read them on the phone with rules.** Anything unclear goes to Review, and every correction teaches a rule. The app gets *no internet permission at all*, which makes "all data local" a guarantee rather than a promise. | **Optional AI with your own key.** Accuracy is better on new kinds of messages, but the app needs internet permission and the message text goes to the AI provider. This can be added later without rework. |
-| 2 | **Editing in Google Sheets goes away.** | Edit everything in the app, and export to CSV or JSON whenever you like. | Keeping Sheets in sync both ways would bring back most of the complexity being removed. |
-| 3 | **Backups.** A lost phone means lost data unless there is a copy. | A **weekly automatic backup file** saved to a folder you pick (for example Downloads, or a USB-synced folder), plus a "Back up now" button. Android's own cloud backup is switched off. | Android cloud backup (Google Drive): it works with no effort, but the data then sits with Google. |
-| 4 | **Features to drop or simplify** (details in §5). | Drop Telegram, heartbeat alerts, editable AI prompts, and the AI daily digest (replaced by an on-phone summary card). Replace weekly AI learning with "always file *Swiggy* as *Food*?", offered as a one-tap suggestion right after you correct a row. | Keep any of them; each one kept adds back a little code. |
-| 5 | **How you install it.** | **Sideload the APK** from GitHub Releases. Google Play restricts apps that read notifications or SMS, and its review process slows every update. | Play Store: needs a developer account, a privacy review and possibly a permission declaration. |
-| 6 | **Where the code lives.** | A new `app/` folder in the **LifeTracker** repo. `web/` stays live until you switch over, then it is deleted and the FinanceTracker repo is archived. | A brand-new repo. This is cleaner, but you would create it and give me access. |
+| 1 | **How bank messages are read** (today an AI service does it, so the text leaves the phone) | **On the phone with rules.** Anything unsure goes to "To confirm"; corrections become rules with one tap. The app gets **no internet permission**, so "all data local" is guaranteed. | Optional AI with your own key: better on unusual messages, but needs internet and sends the message text out. It can be added later. |
+| 2 | **Google Sheets editing goes away** | Edit in the app; export CSV or JSON any time | Two-way Sheets sync: brings back most of the complexity |
+| 3 | **Backups** | Weekly automatic backup file to a folder you pick, plus "Back up now". Android cloud backup off | Android cloud backup to Google Drive |
+| 4 | **Notification budget** | Morning and evening by default, afternoon optional, Sunday weekly look-back on. New-transaction alerts off (they come in the evening wrap-up) | Turn any on or off in Setup |
+| 5 | **How you install it** | Sideload the APK from GitHub Releases | Play Store: restricts apps that read notifications/SMS, and slow reviews |
+| 6 | **Where the code lives** | New `app/` folder in the LifeTracker repo; `web/` deleted and FinanceTracker archived after the switch | A new repo you create |
+| 7 | **Name** | "LifeTracker" | Your pick |
 
 ---
 
-## 3. What the two apps do today
+## 3. The design idea: one map for everything
+
+Today the two apps hold the same kinds of things in different shapes: supplements and
+chores each have their own logs, pause, undo and cards, and money has its own review
+list, its own to-dos ("add to Splitwise", "enter balance") and 13 settings lists. The new
+app uses **four building blocks**, and every screen is made from them.
+
+| Block | What it is | Covers |
+|---|---|---|
+| **Routine** | Something you do on a schedule | Supplements, chores, any future habit (workout, water, reading), recurring bills |
+| **Log** | A routine done or missed on a day | Today's "taken", "done", "missed" |
+| **Money entry** | A transaction | Bank messages, pasted or typed expenses, flatmate settle-ups |
+| **Rule** | "When a message contains *X*, do *Y*" | Category rules, payee rules, aliases, flatmate, own accounts, spam, reminders |
+
+Two supporting lists hold your **accounts** (bank or card, last 4 digits, which card bills
+go to) and **categories** (split by default? counts as spending?).
+
+### One routine model for supplements and chores
+
+A routine has a few plain-language settings:
+
+| Setting | Choices | Supplement default | Chore default |
+|---|---|---|---|
+| **When** | Every day · Every N days (from the last time you did it) · On certain weekdays (optionally every other week, or only the 1st/2nd/3rd/4th/last week of the month) | Every day | Weekdays you pick |
+| **Time of day** | Morning · Afternoon · Evening · Anytime | Morning | Anytime |
+| **If missed** | **Let it go** (it counts as missed and the next one comes as usual) · **Keep it until done** (it stays on Today as overdue) | Let it go | Keep it until done |
+| **Effort** (optional) | Points, used to balance a busy day | — | 10 |
+| **Area** | Health · Home · or your own label | Health | Home |
+| **Details** (optional) | Dose, unit, notes… | dose, unit | notes |
+| **Pause** | Until a date, or until I resume | | |
+
+**"If missed" is the only real difference** between the supplement and chore logic today.
+Making it a setting removes a whole parallel code path, and it lets you have, for example, a
+supplement that carries over, or a chore that doesn't. Both existing scheduling engines are
+kept underneath and tested as they are; one `isDue(routine, day)` picks the right one.
+
+"Twice weekly" is approximated today as every 3 days. With weekdays it becomes exact.
+Your existing items move over with today's behaviour, and you can change them afterwards.
+
+### Why this lowers effort for you
+
+1. **One place to act, one place to look, one place to set up.** You never wonder which
+   screen something lives on.
+2. **Every row works the same way**, whether it's a supplement, a chore, a transaction to confirm
+   or a Splitwise to-do:
+   - tap the circle = done
+   - tap the row = details
+   - swipe = missed / move / more
+3. **Only what needs you is shown.** Empty sections disappear, and an empty Today says "All done".
+4. **Undo instead of "Are you sure?"** Only deleting a routine asks first.
+5. **The app asks at the right moment, once.** "Always file Swiggy as Food?" appears right after you
+   correct one; "What's your HDFC balance?" appears on the 1st.
+6. **At most three headline numbers per screen**, and the same period control (Week · Month,
+   ‹ › to go back) everywhere.
+7. **Defaults over questions.** A new routine needs only a name and when; everything else is
+   under "More".
+8. **Plain words:** *To confirm*, *Add to Splitwise*, *Spent*, *Owed*, *Missed*.
+
+---
+
+## 4. The screens
+
+### Today (act)
+
+```
+┌─────────────────────────────────────┐
+│ Tue 17 Nov        4 left · ₹1,240   │  ← one summary line
+├─────────────────────────────────────┤
+│ OVERDUE                             │
+│ ○ Clean beard        since Tue  ⋯   │
+│ MORNING                             │
+│ ○ Vitamin D3   60000 IU         ⋯   │
+│ ○ Omega-3      1000 mg          ⋯   │
+│ EVENING                             │
+│ ○ Laundry                       ⋯   │
+│ MONEY · 3 to confirm                │
+│ ○ Swiggy   ₹340   Food          ⋯   │
+│ ○ Add ₹1,200 rent split to Splitwise│
+│ ○ Enter HDFC balance (1st)          │
+│ DONE TODAY (5)                    ▸ │  ← collapsed
+└─────────────────────────────────────┘
+                [ + ]
+```
+
+- Overdue first, then by time of day, then money to-dos. Chores and supplements are mixed
+  by time of day, not split by type.
+- **The money to-dos are today's Review, Splitwise and balance screens, folded into one list.**
+  A transaction that parsed cleanly never shows up here; it is just recorded.
+- A day that's over its effort points shows one warning line ("Heavy day: 140/100, move
+  something?"). The capacity calendar opens from "move".
+- The AI insight card is gone; the summary line plus the weekly look-back replace it.
+
+### Insights (look)
+
+One period control at the top (Week · Month, ‹ ›) drives three sections:
+
+- **Spending:** *Spent*, *vs last period*, *Owed with flatmate*; one bar chart by category (tap a
+  bar for its transactions); one "this month vs last" running line; account balances and
+  card dues below. "All transactions" opens the full searchable list, where any entry can be edited.
+- **Habits:** completion % and a list of routines with streaks; the year heatmap is collapsed.
+- **Home:** done on time, missed, and a load-per-day calendar (today's capacity calendar).
+
+**Tap any day anywhere** to get one day view with everything on it: what was done or missed, and what was spent.
+This replaces the separate Calendar, Day and Trends pages and the date-range page.
+
+Compared with today's money Home: 5 range presets become Week/Month with arrows (last month is
+one tap back), about 8 tiles become 3 numbers, and 4 charts become 2. The 6-month view and
+"split by account" stay one tap deeper.
+
+### Setup (configure)
+
+- **Routines:** the list grouped by area; add, edit, pause.
+- **Money:** **Accounts** (bank/card, last 4 digits, pays card bills, own-account text),
+  **Categories** (split by default, counts as spending), **Rules**.
+- **Notifications:** times, which ones are on, and the reader status.
+- **Data:** back up now, backup folder, export CSV, import, about.
+
+**Rules become one list.** Each rule is "when a message contains ___" plus one action:
+
+| Action | Replaces today's |
+|---|---|
+| File as… (vendor / category / sub-category / my share) | payee rules, category rules, aliases |
+| Settle-up with flatmate | flatmate identifiers |
+| Between my own accounts | own-account identifiers |
+| Ignore: spam | spam phrases |
+| Ignore: future payment reminder | reminder phrases |
+
+Card last-4 and "known sources" move into **Accounts**; "split default" and "not counted as
+spending" become switches on a **Category**. **13 lists become 3 screens.** The order in which
+rules apply stays exactly as today, so behaviour doesn't change.
+
+### + (quick add)
+
+Three choices: **Expense** (amount, what, category; the rest is optional), **Paste a
+message** (fills the expense form), **New routine**.
+
+### First run
+
+Three steps:
+1. Allow notifications.
+2. Allow reading notifications for bank messages, with one sentence on why and what is never sent anywhere.
+3. Import a backup, or start fresh with sample categories.
+
+---
+
+## 5. Notifications
+
+**How they work:** the app schedules them on the phone with Android's own alarm service. They
+arrive with the app closed and need no internet. After every change, and every time the app
+opens, the app recalculates the next 7 days of notifications, so their content stays right.
+
+| Notification | When (default) | Content | Buttons |
+|---|---|---|---|
+| **Morning** | 09:00 | "4 to do this morning: Vitamin D3, Omega-3…" + balance task on the 1st/5th | **All done** · Open |
+| **Afternoon** (off) | 13:00 | Afternoon routines still left | **All done** · Open |
+| **Evening wrap-up** | 20:30 | What's still left, overdue chores, "3 to confirm, 1 to add to Splitwise", tomorrow's chores | **Snooze 1 h** · Open |
+| **Weekly look-back** | Sun 19:00 | "Habits 92% · Spent ₹8,400 (−12%) · 2 chores missed" | Open |
+| **Reader check** | only when needed | "No bank messages seen for 3 days. Is the reader still on?" | Open settings |
+| **New transaction** (off) | on capture | "₹340 at Swiggy, filed as Food" | **Looks right** · Open |
+
+- **Grouped and capped:** one notification per time slot, never one per item. That is two to
+  three a day by default.
+- **Buttons work without opening the app.** The tap is saved to the same local queue the bank
+  messages use, the matching notification is cleared, and the app applies it the next time it opens.
+- **The reader check replaces today's heartbeat and silence alerts.** Every captured message
+  pushes the check 3 days further out, so it fires only if messages stop.
+- Each notification has its own Android channel, so you can also silence one in phone settings.
+- Times are inexact by a few minutes. This avoids the "exact alarms" permission and saves battery.
+
+---
+
+## 6. What the two apps do today
 
 | Area | LifeTracker | FinanceTracker |
 |---|---|---|
-| Main screens | Today (supplements due, chores, capacity meter, AI insight), Calendar, Day view, Trends (year heatmap, streaks, compliance), Manage | Home (date ranges, totals, donut, pace charts, monthly bars, balances, spend by account, list), Review, Settings, Add / paste a transaction |
-| Data | Google Sheet: `supplements`, `log`, `chores`, `chore_log`, `chore_moves`, `settings`, `ai_summary` | Google Sheet: one tab per month plus `Transaction Ledger`, `Inbox`, `Config` (13 lists), `Learning`, `Balances`, `State`, `SystemLog` |
-| Automation | One daily cron: Telegram reminders at 13:00 and 20:00, chores at 21:00, AI digest at 08:00, auto-resume of paused items | Hourly cron: parse new messages; nightly month rollover, summary and alerts; weekly AI learning |
-| Outside services | Vercel, Google OAuth, Sheets API, Groq, Telegram | Vercel, Google OAuth, Sheets API, Groq, Telegram, cron-job.org, MacroDroid, Apps Script backup |
-| Stack | Next.js 16, React 19, Tailwind 4, zod, NextAuth | Next.js 16, React 19, plain CSS, custom sign-in with `jose` |
-| Tests | 169 tests, ~1,300 lines (`node --test`) | ~270 tests, ~3,600 lines (`tsx --test`) |
+| Screens | Today, Calendar, Day, Trends, Manage | Home (ranges, tiles, 4 charts, balances, list), Review, Settings, Add/paste |
+| Data | Google Sheet: supplements, log, chores, chore_log, chore_moves, settings, ai_summary | Google Sheet: a tab per month + Ledger, Inbox, Config (13 lists), Learning, Balances, State, SystemLog |
+| Automation | Daily cron: Telegram reminders 13:00 / 20:00, chores 21:00, AI digest 08:00 | Hourly cron: parse messages; nightly rollover, summary, alerts; weekly AI learning |
+| Outside services | Vercel, Google sign-in, Sheets, Groq, Telegram | + cron-job.org, MacroDroid, Apps Script backup |
+| Stack | Next.js 16, React 19, Tailwind 4, zod, NextAuth | Next.js 16, React 19, plain CSS, `jose` sign-in |
+| Code / tests | ~6,700 / ~1,300 lines | ~10,500 / ~3,600 lines |
 
 ---
 
-## 4. Review findings
+## 7. Review findings
 
-### Worth keeping (moves over almost as-is)
+### Worth keeping
 
-- **The logic is already separated from storage in both apps.** LifeTracker has `lib/core/logic.ts` (due dates, streaks,
-  compliance) and `lib/chores/logic.ts` (patterns, overdue, moves, capacity,
-  missed). FinanceTracker has `money`, `reports`, `review`, `rules`, `otp`,
-  `dedupe`, `pairing`, `balances`, `analytics`, `ranges` and `manual`. They take data and return
-  answers, and none of them talk to Sheets.
-- **There is one rule for "what counts as spending"** (`spendOf` / `isExcluded`), and every total
-  and chart uses it. That is the right pattern, so it stays.
-- **Charts are hand-built in SVG** (FinanceTracker, ~700 lines, with tooltips and
-  table views). They are light, so LifeTracker's heatmap and calendar should share them rather than add a chart library.
-- **Doubtful rows are never discarded.** They go to Review with their reasons attached.
-- **The tests are good.** In particular `chores/logic.test.ts` (1,000 lines) and
-  FinanceTracker's `logic.test.ts` (1,200 lines).
+- **The logic is already separated from storage.** LifeTracker has its due/streak/compliance logic and its
+  chores logic (patterns, overdue, moves, capacity, missed). FinanceTracker has money, reports, review,
+  rules, OTP/spam/reminder filters, dedupe, pairing, balances and analytics. All of these take data in and return
+  answers.
+- **There is one rule for "what counts as spending"** (`spendOf`), and every number uses it.
+- **The hand-built SVG charts** (~700 lines, with tooltips and table views) are light, and they will be shared by both areas.
+- **Doubtful entries are never hidden.** They go to review with their reasons.
+- **The tests are strong.** The chores tests (1,000 lines) and FinanceTracker's logic tests
+  (1,200 lines) both come along.
 
-### What is costing you (and goes away on the phone)
+### What goes away on the phone
 
-About half of FinanceTracker's server code, and a fair part of
-LifeTracker's, exists only because the database is a Google Sheet on a free host:
+About half of FinanceTracker's server code, and a good part of LifeTracker's, exists only
+because the database is a Google Sheet on a free web host:
 
-| Cost today | Why it exists | On the phone |
-|---|---|---|
-| Read-limit errors, caching layers, retry-on-429 (both apps; the last PR was about this) | Sheets allows 60 reads a minute | Gone: the database is a local file |
-| Column-index map, self-healing tab and column creation (`schema.ts` 493 lines, `bootstrap.ts`, `workbook.ts`, `configlists.ts` 508 lines) | Sheet columns are the schema | Gone: real tables, numbered upgrades |
-| Month tabs, rollover, Ledger mirroring, cross-month lookups (decisions 25, 29) | One tab per month keeps the Sheet readable | Gone: a month is just a date filter |
-| Inbox journal over HTTP, Apps Script backup path, two-path dedupe, drain lock in a sheet | Messages arrive over the internet from MacroDroid | Simpler: one capture path on the phone writes straight to a local queue |
-| Heartbeat, silence and stuck alerts, cron dispatch, State tab | Need to prove the phone→server pipe is alive | Gone |
-| IST helpers everywhere (`istToday`, `+05:30` stamps) | Vercel runs in UTC | Gone: the phone's clock is local time |
-| Sign-in (NextAuth / `jose`), secrets, `authz.ts` | A public URL holds private data | Gone: no URL |
-| Telegram formatting and sending (`notify.ts`, `telegram.ts`) | The server can't show phone notifications | Replaced by local notifications |
-| `id = largest id + 1` after reading the whole tab (both apps) | Sheets has no auto-ids; two quick writes can collide | Random unique ids |
-
-### Things to fix while moving
-
-- **Duplicated paths in LifeTracker.** Supplements and chores each have their own log, undo, pause,
-  scheduled-resume and resume code (`log`/`logChore`, `deleteLog`/`deleteChoreLog`,
-  `setActive`/`setChoreActive` and so on). Use **one `logs` table** and **one pause/resume
-  helper**.
-- **Very large components:** `TxnList.tsx` (594 lines), Home `page.tsx` (477),
-  `AddTxn.tsx` (368). Split them by job: card, editor, list.
-- **Money is stored as floats with `round2` everywhere.** Store whole **paise** as integers, and
-  convert only when showing a number.
-- **Two date libraries of the apps' own** (`core/logic.ts` date helpers and FinanceTracker's `dates.ts`):
-  merge them into one `dates.ts`.
-- **Two AI clients and two Telegram clients:** remove them all (or keep one AI client if you
-  choose option 2 in decision 1).
-- **Two styling approaches** (Tailwind and hand-written CSS): use one, Tailwind, with the
-  shared colour variables LifeTracker already has (light and dark).
-- **Two test runners:** use one, the built-in `node --test` (no extra dependency).
-- **Leftover files:** `Sheet.gs`, `apps-script/`, 14 setup and repair scripts. Delete them.
-
----
-
-## 5. What each feature becomes
-
-| Today | In the new app |
+| Cost today | On the phone |
 |---|---|
-| MacroDroid forwards bank SMS and app notifications to a URL | The app's own **notification reader** (an Android permission you switch on once) captures notifications from your SMS app, bank apps, Splitwise and SBI Card. It also catches RCS messages, which the old SMS trigger missed. Each message is saved to a local queue first, so nothing is lost even if reading it fails. |
-| Groq reads each message | **Rules on the phone** (decision 1): amount, debit/credit, last 4 digits, payee, date, then your existing card map, aliases, payee rules, flatmate and own-account rules, OTP, spam and reminder filters. Unsure → Review. |
-| Weekly AI learning (rules + spam phrases) | When you correct a row, the app offers **"Always file X as Y?"** (one tap). "Reject as spam" offers a phrase to block. Same safety checks as today (`validateRule`, `validateSpamPhrase`). |
-| Telegram reminders 13:00 / 20:00 / 21:00 | **Phone notifications.** They are recalculated after every change and on every app open, and scheduled for the next 7 days, so they are right even when the app is closed. |
-| AI morning digest | A **summary card** on Today, worked out on the phone: streaks, misses, chores load, spending vs last month. |
-| Auto-resume paused items (cron) | Nothing needed: the logic already treats an item as active from its resume date. |
-| Month rollover, Ledger | Nothing needed. |
-| Balances, card dues, monthly balance tasks | Same logic, local tables. |
-| Splitwise tracking (split, my share, "added to Splitwise") | Unchanged. |
-| Edit in Google Sheets | Edit in the app, and export to CSV. |
-| Settings: 13 Config lists, prompt editor | The same lists as simple editors. The prompt editor is dropped (no AI). |
+| Read-limit errors, caching, retry logic (both apps) | Gone: a local file |
+| Column maps, self-healing tabs (`schema.ts`, `bootstrap.ts`, `workbook.ts`, `configlists.ts`, ~1,600 lines) | Real tables with numbered upgrades |
+| Month tabs, rollover, Ledger mirroring | A month is a date filter |
+| Messages over HTTP, Apps Script backup path, drain lock | One local capture queue |
+| Heartbeat, silence and stuck alerts, cron dispatch | The reader check notification |
+| IST conversions everywhere | The phone's clock is local time |
+| Sign-in, secrets, request checks | No URL, nothing to sign in to |
+| Telegram code in both apps | Phone notifications |
+| `id = largest + 1` after reading a whole tab | Random unique ids |
+
+### Fix while moving
+
+- LifeTracker has **two copies** of the log, undo, pause and resume code (supplements vs chores). The routine model
+  leaves one.
+- **Big screens:** `TxnList.tsx` (594 lines), money Home (477), `AddTxn.tsx` (368). They are
+  rebuilt smaller, as one shared row and one shared editor.
+- **Money stored as floats** with `round2` everywhere → store whole paise.
+- **Duplicates across the two apps:** two sets of date helpers, two AI clients, two Telegram clients, two
+  styling systems and two test runners → one of each, or none.
+- **Leftovers:** `Sheet.gs`, `apps-script/`, 14 setup/repair scripts.
 
 ---
 
-## 6. Technology choice
+## 8. Technology
 
-| Option | Reuses today's code | APK size | Effort | Verdict |
+| Option | Reuses today's code | APK size | Effort | |
 |---|---|---|---|---|
-| **Capacitor + React + Vite** (the web app wrapped as an Android app, plus a small native part) | Logic, tests and most components | ~5–8 MB | Lowest | **Recommended** |
-| React Native / Expo | Logic and tests; all screens rewritten | ~20–30 MB | High | No |
-| Native Kotlin | Nothing; everything rewritten | ~3–5 MB | Highest | No |
+| **Capacitor + React + Vite** (web code wrapped as an Android app, plus a small native part) | Logic, tests, charts, some UI pieces | ~5–8 MB | Lowest | **Recommended** |
+| React Native / Expo | Logic and tests | ~20–30 MB | High | |
+| Native Kotlin | Nothing | ~3–5 MB | Highest | |
 
-**What we use, and nothing else:**
+**What we use, and nothing more:**
 
-- **React 19 + TypeScript (strict)**: same as today.
-- **Vite** builds the app. It replaces Next.js, because there is no server any more.
-- **Tailwind 4**: same as LifeTracker today.
-- **Capacitor**, with its official plugins for app/back button, local notifications,
-  files and share, plus `@capacitor-community/sqlite` for the database.
-- **One small native plugin of our own (Kotlin, ~150 lines)** to read notifications.
-- `zod/mini`, only to check a backup file before importing it.
-- No state library, router library, chart library or date library. A ~40-line
-  store and a ~30-line tab router are enough for five screens.
+- React 19 and strict TypeScript.
+- **Vite**, which replaces Next.js because there is no server.
+- Tailwind 4.
+- Capacitor plus its official app, local-notification, file and share plugins, and `@capacitor-community/sqlite`.
+- **One native plugin of our own (Kotlin, ~200 lines)**, which reads bank notifications and saves notification button taps.
+- `zod/mini`, only to check imported backups.
+
+No state, router, chart or date libraries: three tabs and a few sheets don't need them.
 
 ---
 
-## 7. How the app is built
-
-### Screens (bottom bar)
-
-1. **Today**: the summary card, supplements due, chores (overdue / today / done, with
-   mark missed and reschedule), spending today, and a "N to review" link.
-2. **Money**: ranges, totals, charts, balances, the transaction list, and **+ Add / paste**.
-3. **Review**: transactions needing review, balance tasks, rule suggestions.
-4. **Habits**: the calendar, day view, trends and heatmap for supplements and chores.
-5. **Settings**: supplements, chores, capacity, the money lists (categories, accounts,
-   rules…), notification access, backup / export / import, about.
+## 9. How it's built
 
 ### Folders
 
 ```
 app/
-  android/            Android project (generated by Capacitor) + NotificationReader plugin
+  android/          Android project + the native plugin (reader + notification buttons)
   src/
-    logic/            pure functions only: dates, money, habits, chores, parse, rules,
-                      review, reports, balances, pairing, analytics, summary
-    data/             database: tables, upgrades, read/write, backup/export, test store
-    phone/            notifications, captured messages, files, back button
-    ui/               shared pieces: card, sheet, buttons, bottom bar, charts
-    screens/          today, money, review, habits, settings
-  tests/              unit tests + a folder of real (anonymised) bank messages
+    logic/          pure functions: dates, money, routines (both schedule engines),
+                    parse, rules, review, reports, balances, pairing, insights, notifications plan
+    data/           database tables, upgrades, store, backup/export/import, test store
+    phone/          notifications, capture queue, files, back button
+    ui/             one row, one editor sheet, period control, charts, bottom bar
+    screens/        today, insights, setup, day, quick-add, first-run
+  tests/            unit tests + anonymised real bank messages
 ```
 
-**One firm rule:** `logic/` never imports from `data/`, `phone/` or `ui/`. A test checks this
-(FinanceTracker already has a similar import check).
+**Rule:** `logic/` never imports from `data/`, `phone/` or `ui/`, and a test enforces it. Even
+*which notifications to send* is a pure function: `planNotifications(data, now) →
+list`. That makes it testable, and the phone code only hands that list to Android.
 
-### Data: one file, these tables
+### Tables (one database file on the phone)
 
 | Table | Holds |
 |---|---|
-| `items` | supplements: name, frequency, time of day, notes, details (dose, unit…), active, added/resumed/resume-on dates |
-| `chores` | name, days, frequency, A/B week, week of month, points, notes, active, dates |
-| `chore_moves` | one-off reschedules |
-| `logs` | **one table for both**: what (`item`/`chore`), which, date, `done`/`missed`, time, note |
-| `transactions` | date, type, mode, source, vendor, category, sub-category, amount (paise), split, my share (paise), in Splitwise, status, reasons, original text, parser's category, text fingerprint |
-| `inbox` | captured messages waiting to be read: when, from which app, text, status, transaction id, error |
-| `balances` | balance entries per account (same rules as today) |
-| `settings` | key → value, including each money list (categories, accounts, card map, aliases, payee rules…), checked on save |
+| `routines` | name, area, when (schedule), time of day, if missed, effort, details, pause, start date |
+| `routine_moves` | one-off "do it on another day" |
+| `logs` | routine, day, done or missed, time, note |
+| `transactions` | date, type, account, vendor, category, sub-category, amount and my share (paise), split, in Splitwise, status, reasons, original text, parser's category, fingerprint |
+| `incoming` | the native queue: captured messages and notification button taps, until the app processes them |
+| `accounts` | name, bank or card, last 4 digits, source names, pays card bills, own-account text |
+| `categories` | name, split by default, counts as spending, order |
+| `rules` | match text, action, values |
+| `balances` | balance entries per account |
+| `settings` | notification times and switches, effort per day, backup folder |
 
-The whole database is loaded into memory when the app opens (it is small: a few thousand rows a
-year). Screens read from memory. Every change is written to the file in a single
-step and then updates memory. That is the same "one snapshot" idea as the
-recent read fix, minus Google.
+The app loads everything into memory on open (a few thousand rows a year). Each change is
+written to the file in one step, then the screen updates.
 
-### How a bank message travels
+### A bank message, end to end
 
 ```mermaid
 flowchart LR
-  N["Notification arrives<br/>(SMS app, bank app, Splitwise)"] --> Q["Native reader saves it<br/>to the local queue"]
-  Q --> O["App opens or resumes"]
-  O --> F{"OTP / spam / reminder?"}
+  N["Notification from SMS app,<br/>bank app or Splitwise"] --> Q["Native reader saves it<br/>to 'incoming'"]
+  Q --> O["App opens / resumes"]
+  O --> F{"OTP, spam or<br/>reminder rule?"}
   F -- yes --> I["Kept as ignored"]
-  F -- no --> D{"Same text seen<br/>in the last 15 min?"}
-  D -- yes --> FL["Added, flagged as possible duplicate"]
-  D -- no --> P["Parse with rules"]
-  P --> T["Transaction: ok or needs review"]
-  T --> PR["Pair self transfers"]
+  F -- no --> P["Parse + rules"]
+  P --> C{"Sure?"}
+  C -- yes --> T["Recorded"]
+  C -- no --> R["Today › To confirm"]
+  T --> S["Pair self transfers; plan notifications"]
+  R --> S
 ```
 
-The native part only **saves** the message (and can show a "new transaction" notification).
-All reading and deciding happens in TypeScript, in one place, and is fully tested.
+---
+
+## 10. Coding rules
+
+1. **One place per rule.** "Is it due", "is it overdue", "does it count as spending" and "what to
+   notify" each live in exactly one function.
+2. **Decisions live in `logic/` and have tests.** Screens only show and collect.
+3. **Plain names, no jargon**, in code and on screen.
+4. **Small files:** a soft cap of ~250 lines, split by job.
+5. **Paise for money, `YYYY-MM-DD` for days, random ids.**
+6. **Every change is one database step**, so all of it saves or none does.
+7. **Numbered database upgrades** that run once, in order.
+8. **No dead code and no flags for features that don't exist.**
+9. **Comments say *why*, not *what*.**
+10. **Before merging:** typecheck, lint, tests, build, plus a screenshot a person looks at for any visual change.
 
 ---
 
-## 8. Coding rules for the new app
+## 11. Moving your data
 
-1. **One place per rule.** "What counts as spending", "is it due", "is it overdue"
-   each live in exactly one function, which every screen calls.
-2. **Pure logic, tested.** Anything that decides something lives in `logic/` and has tests.
-   Screens only show and collect.
-3. **Plain names, no jargon** in code and on screen: `markMissed`, `spentThisMonth`,
-   "Needs review".
-4. **Small files.** A soft cap of ~250 lines; split by job, not by type.
-5. **Money in paise and dates as `YYYY-MM-DD`** (local), everywhere. Ids are random, never "last + 1".
-6. **Every change is one database step**, so either all of it saves or none of it does.
-7. **Database upgrades are numbered** (`001_start.sql`, `002_…`) and run once, in order.
-8. **No dead code.** Remove anything unused in the same change, and add no feature flags for features that don't exist.
-9. **Comments say *why*, not *what*.** Keep the short "why" notes both repos already
-   have; they're valuable.
-10. **Checks before every merge:** typecheck, lint, tests, build. A visual change also gets a
-    screenshot that a person looks at.
+1. A one-off script reads both Sheets and writes one backup file for the new app. It:
+   - turns supplements and chores into routines, with today's behaviour (supplements "let it go",
+     chores "keep until done")
+   - merges both log tabs into `logs`
+   - turns the month tabs into transactions (not the Ledger, so nothing counts twice)
+   - turns the 13 Config lists into accounts, categories and rules
+   - converts amounts to paise
+2. **Setup → Data → Import**, then the app compares totals per month with the old apps
+   and shows the result.
+3. **Your past messages become the parser's test set**, because each kept its original text and
+   the fields you accepted. Names and numbers are masked first. **Target before switching
+   over: ≥ 95% of amounts, dates and debit/credit right; the rest goes to "To confirm",
+   never wrong and hidden.**
 
 ---
 
-## 9. Moving your existing data
+## 12. Build, install, update
 
-1. A one-off script (runs on a computer, reusing today's Sheets readers) reads **both**
-   Sheets and writes one backup file in the new app's format. It converts:
-   - month tabs → `transactions` (from the month tabs, not the Ledger, so nothing is
-     counted twice, as today)
-   - supplements, logs, chores, chore logs, moves → their tables
-   - the 13 Config lists → settings
-   - balances → balances
-   - amounts → paise, `Owed`/`Transfer`/`Self Transfer` unchanged
-2. You copy the file to the phone and use **Settings → Import backup**.
-3. The app checks the counts and totals: rows per month and spend per month must
-   match the old Home page. It then shows the result.
-4. **A parser test set comes for free:** every old transaction kept its original message
-   *and* the fields that were finally accepted. Those messages (with names and
-   numbers masked) become the test set for the new on-phone parser.
-   **Target before switching over: ≥ 95% of amounts, dates and debit/credit right on
-   that set, with the rest landing in Review, never wrong-and-hidden.**
+- GitHub Actions builds a **signed APK** on each version tag and attaches it to a GitHub Release.
+- **Keep the signing key in two places** (a GitHub secret, plus your own copy). Without it, an
+  update can't install over the old app.
+- **Install or update:** download the APK on the phone and open it. Data stays across updates.
+- **Permissions:** notification reader, post notifications, and (asked once) skip battery
+  optimisation so the reader isn't killed. No internet.
 
 ---
 
-## 10. Build, install, update
+## 13. Phases
 
-- **GitHub Actions** builds a signed release APK whenever a version tag is pushed (`v1.0.0`)
-  and attaches it to a GitHub Release.
-- **The signing key** is stored as a GitHub secret **and** by you somewhere safe. If it is
-  lost, a future update can't install over the old app, which would mean reinstalling
-  and restoring from backup.
-- **Install:** download the APK on the phone, allow "install unknown apps" once, and open the file.
-- **Update:** same steps. Your data stays, because the key is the same.
-- **Permissions asked:** notification access (to read bank messages) and permission to post
-  notifications (reminders). Nothing else, and no internet (decision 1).
-
----
-
-## 11. Phases
-
-Each phase is one pull request, merged only when its checks pass. The old web apps
-keep running untouched until phase 7.
+Each phase is one pull request, merged when its checks pass. The old apps keep running until phase 8.
 
 | Phase | Work | Done when |
 |---|---|---|
-| **0. Decide** | Your answers to §2 | Plan updated |
-| **1. Skeleton** | `app/` with Vite + React + TS + Tailwind + Capacitor; bottom bar, five empty screens, light/dark theme; debug APK builds in CI | The APK installs and opens on your phone |
-| **2. Logic** | Move the pure logic and tests from both repos into `logic/`; merge the date helpers; money in paise; one logs model; remove IST/Sheets assumptions | All moved tests pass, plus the import-rule test |
-| **3. Data** | Tables + upgrades, load-into-memory store, writes, test store, backup / export / import | Round-trip test: export → import gives identical data |
-| **4. Habits & chores screens** | Today (habits part), Habits, Settings for items, chores and capacity; reminders as phone notifications | Feature parity with LifeTracker on the phone |
-| **5. Money** | On-phone parser + parser test set; notification reader plugin; queue processing; Money, Review, Add/paste, balances, lists in Settings; one-tap rule suggestions | Parser meets the 95% target; a real bank SMS on your phone becomes a transaction |
-| **6. Move data** | Export script, import, totals check | Your real data matches the old apps |
-| **7. Switch over** | Use the app alone for 1–2 weeks with weekly backups on; then turn off MacroDroid, the cron jobs and Telegram; delete `web/`; archive FinanceTracker; remove the Vercel projects; revoke the Google service accounts and the Groq / Telegram keys | Old services gone, no secrets left anywhere |
+| 0. Decide | Your answers to §2 | Plan final |
+| 1. Skeleton | `app/` with Vite, React, Tailwind and Capacitor; three tabs and +; light/dark; debug APK built in CI | It installs and opens on your phone |
+| 2. Logic | Move and merge the pure logic and tests; the routine model with both schedule engines; paise; one date module | All moved tests pass, plus new routine tests |
+| 3. Data | Tables, upgrades, store, backup/export/import | Export → import round trip is identical |
+| 4. Today + routines + notifications | Today list, shared row and editor, Setup › Routines, capacity warning and move, `planNotifications`, morning/evening/weekly notifications with buttons | You can run your day from the app and its notifications |
+| 5. Money capture | Parser + test set, native reader, `incoming` queue, To-confirm rows, Splitwise/balance to-dos, quick add and paste, Accounts/Categories/Rules, one-tap rule suggestions, reader check | Parser meets the 95% target; a real bank message becomes an entry |
+| 6. Insights | Period control, Spending/Habits/Home sections, day view, all transactions | Totals match the old apps for the same months |
+| 7. Move data | Export script, import, totals check | Your real data is in and matches |
+| 8. Switch over | 1–2 weeks on the app alone, with backups on; then turn off MacroDroid, cron, Telegram and Vercel; delete `web/`; archive FinanceTracker; revoke the Google service accounts and the Groq / Telegram keys | Nothing old left running, no secrets anywhere |
 
 ---
 
-## 12. Risks and how they're handled
+## 14. Risks
 
 | Risk | Handling |
 |---|---|
-| The on-phone parser is less accurate than the AI | The 95% target on your real messages before switching over; unsure rows always go to Review; one-tap rules learn fast; AI can be added later (decision 1) |
-| Android stops the notification reader to save battery | Ask once to exempt the app from battery optimisation; Settings shows a red "Reader off" banner if notifications stop arriving; the reader only saves text, so it is cheap |
-| Losing the phone loses data | Weekly automatic backup file plus manual export (decision 3); the import is tested in CI |
-| Losing the signing key | Two copies (GitHub secret plus yours); written in the README |
-| Bank changes its message format | The row lands in Review with its original text; fix it with a rule or a parser update plus a test |
-| Reminders show stale content when the app hasn't been opened | They are recalculated on every change and every open; a reminder only lists what was pending at that moment |
+| The on-phone parser is less accurate than the AI | 95% target on your own messages before switching over; unsure entries go to To confirm; one-tap rules; AI can be added later |
+| Android stops the reader to save battery | Battery exemption asked once; the reader check notification; a red banner in Setup |
+| Notification content is out of date | Re-planned after every change and every open; buttons cancel the notification they answer |
+| A lost phone | Weekly backup file plus export; import tested in CI |
+| A lost signing key | Two copies; written in the README |
+| Too many notifications | Grouped per time slot, 2–3 a day by default, each switchable |
+| A bank changes its message format | The entry lands in To confirm with its text; fix it with a rule or a parser update plus a test |
 
 ---
 
-## 13. Deleted at the end
+## 15. Deleted at the end
 
-Next.js server code, all `api/` routes, NextAuth and `jose` sign-in, both Sheets clients and
-`google-*` packages, `schema.ts` column maps, bootstrap / workbook / rollover / Ledger
-code, drain lock and State tab, heartbeat and alert code, Telegram code, cron routes,
-the Apps Script files, the 14 setup scripts, `Sheet.gs`, the Vercel projects and every secret they held.
+Next.js server code and `api/` routes, both sign-in systems, both Sheets clients and the `google-*`
+packages, column maps, bootstrap / workbook / rollover / Ledger code, the drain lock and State
+tab, heartbeat and alerts, Telegram, cron routes, Apps Script, `Sheet.gs`, the 14 scripts, the
+Vercel projects and every secret they held.
+
+---
+
+## Later (not in this plan)
+
+The routine model is made to grow without new plumbing: workouts, water, reading or
+recurring bills are just routines in a new area. FinanceTracker's backlog idea of an
+assistant that sees across your whole life fits on top of this one local map. That
+can be decided later, keeping in mind that it would mean data leaving the phone.
