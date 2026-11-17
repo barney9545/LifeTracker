@@ -1,6 +1,6 @@
 # Plan: one Android app for your day, your home and your money
 
-Status: **draft v2 for your review**. Nothing is built yet. v2 redesigns the app around how
+Status: **draft v3 for your review**. Nothing is built yet. v2 redesigns the app around how
 you use it, instead of copying both apps screen for screen, and adds notifications.
 
 ---
@@ -19,7 +19,9 @@ you use it, instead of copying both apps screen for screen, and adds notificatio
   One **+** button covers quick adds.
 - **Notifications come from the phone itself.** Two or three a day by default, grouped, with
   buttons that work without opening the app. No server and no Google push service.
-- **Bank messages are read on the phone** from your notifications. MacroDroid, Vercel,
+- **Bank messages are read on the phone** from your notifications. By default, rules on the phone file them.
+  **Optional AI parsing:** paste your own API key in Setup and each message is read by the AI
+  first, then checked by the same rules. MacroDroid, Vercel,
   cron jobs, Telegram, Google Sheets and Google sign-in all go away.
 - **The logic and its ~4,900 lines of tests come across.** The screens are rebuilt to be simpler.
   Expect about half of today's code (≈17,000 → ≈7,500 lines without tests) and an APK under 10 MB.
@@ -32,7 +34,7 @@ My recommendation is listed first. The plan assumes these recommendations.
 
 | # | Question | Recommended | Alternative |
 |---|---|---|---|
-| 1 | **How bank messages are read** (today an AI service does it, so the text leaves the phone) | **On the phone with rules.** Anything unsure goes to "To confirm"; corrections become rules with one tap. The app gets **no internet permission**, so "all data local" is guaranteed. | Optional AI with your own key: better on unusual messages, but needs internet and sends the message text out. It can be added later. |
+| ✅ 1 | **How bank messages are read** | **Decided:** rules on the phone by default; **optional AI parsing with your own API key** (see §5a). | — |
 | 2 | **Google Sheets editing goes away** | Edit in the app; export CSV or JSON any time | Two-way Sheets sync: brings back most of the complexity |
 | 3 | **Backups** | Weekly automatic backup file to a folder you pick, plus "Back up now". Android cloud backup off | Android cloud backup to Google Drive |
 | 4 | **Notification budget** | Morning and evening by default, afternoon optional, Sunday weekly look-back on. New-transaction alerts off (they come in the evening wrap-up) | Turn any on or off in Setup |
@@ -213,6 +215,52 @@ opens, the app recalculates the next 7 days of notifications, so their content s
 
 ---
 
+## 5a. AI parsing (optional, your own key)
+
+**Off until you add a key.** Without a key, everything works on the phone with rules, and
+nothing leaves it.
+
+**Turning it on:** Setup → Money → **AI parsing** → choose a provider and paste your key →
+**Test**. The test sends one sample message and shows the result. The default provider is Groq
+(what FinanceTracker uses today). Any OpenAI-compatible service also works by entering its address and model name.
+
+**How a message is read when AI is on:**
+
+```mermaid
+flowchart LR
+  M["Message"] --> F{"OTP, spam or<br/>reminder rule?"}
+  F -- yes --> I["Ignored. Never sent to AI"]
+  F -- no --> K["Mask: account numbers,<br/>phone numbers, UPI ids"]
+  K --> A["AI reads it"]
+  A --> R["Your rules check every field<br/>(same as FinanceTracker today)"]
+  A -. "no network, error, timeout" .-> L["On-phone rules instead"]
+  L --> R
+  R --> T["Recorded, or To confirm"]
+```
+
+- **The model proposes, your rules decide.** This is FinanceTracker's decision 9, kept as is. Card numbers, payee
+  rules, own accounts and flatmate rules always override the AI. Doubtful answers still go to To confirm.
+- **Less text leaves the phone than today.** OTPs, spam and reminders are filtered first and never
+  sent. Account numbers, phone numbers and UPI ids are masked before sending; the last 4 digits are matched
+  on the phone, so the AI doesn't need them. Only the masked message text is sent: never your history,
+  balances or names from your lists.
+- **It never blocks.** If the call fails (offline, bad key, timeout ~10 s), the on-phone rules handle the
+  message right away and it is marked `read without AI`. There are no retries and no stuck queue.
+- **Your corrections improve the AI too.** Your latest corrections, the ones the old weekly
+  job used, are sent as short examples with each request, masked the same way. This
+  needs no weekly job: the examples are refreshed whenever you correct something.
+- **The key is stored encrypted** with Android's secure key storage. It never appears in backups or
+  exports, and the AI provider's address is the only place it is ever sent.
+- **Setup shows what is used:** "AI read 212 messages this month · 3 fell back to rules".
+- **Accuracy target:** the same 95% bar on your past messages applies **with AI off**, so the app is
+  fully usable without a key. With AI on, the target is FinanceTracker's current accuracy or better.
+
+**Cost of the option:** the app needs Android's internet permission (it can't be added only when
+a key exists). Network access is limited in code to the one provider address you set. No other
+part of the app makes network calls, and a test checks that only the AI client calls `fetch`.
+
+---
+
 ## 6. What the two apps do today
 
 | Area | LifeTracker | FinanceTracker |
@@ -264,7 +312,7 @@ because the database is a Google Sheet on a free web host:
 - **Big screens:** `TxnList.tsx` (594 lines), money Home (477), `AddTxn.tsx` (368). They are
   rebuilt smaller, as one shared row and one shared editor.
 - **Money stored as floats** with `round2` everywhere → store whole paise.
-- **Duplicates across the two apps:** two sets of date helpers, two AI clients, two Telegram clients, two
+- **Duplicates across the two apps:** two sets of date helpers, two AI clients (→ one, optional), two Telegram clients, two
   styling systems and two test runners → one of each, or none.
 - **Leftovers:** `Sheet.gs`, `apps-script/`, 14 setup/repair scripts.
 
@@ -285,6 +333,8 @@ because the database is a Google Sheet on a free web host:
 - Tailwind 4.
 - Capacitor plus its official app, local-notification, file and share plugins, and `@capacitor-community/sqlite`.
 - **One native plugin of our own (Kotlin, ~200 lines)**, which reads bank notifications and saves notification button taps.
+- The plain `fetch` built into the browser for the optional AI call (no AI SDK). The key is held in the
+  Android Keystore through a small secure-storage plugin.
 - `zod/mini`, only to check imported backups.
 
 No state, router, chart or date libraries: three tabs and a few sheets don't need them.
@@ -338,7 +388,7 @@ flowchart LR
   Q --> O["App opens / resumes"]
   O --> F{"OTP, spam or<br/>reminder rule?"}
   F -- yes --> I["Kept as ignored"]
-  F -- no --> P["Parse + rules"]
+  F -- no --> P["AI (if key set, else on-phone rules)<br/>then your rules"]
   P --> C{"Sure?"}
   C -- yes --> T["Recorded"]
   C -- no --> R["Today › To confirm"]
@@ -389,7 +439,7 @@ flowchart LR
   update can't install over the old app.
 - **Install or update:** download the APK on the phone and open it. Data stays across updates.
 - **Permissions:** notification reader, post notifications, and (asked once) skip battery
-  optimisation so the reader isn't killed. No internet.
+  optimisation so the reader isn't killed. Internet, used only by the optional AI call.
 
 ---
 
@@ -404,7 +454,7 @@ Each phase is one pull request, merged when its checks pass. The old apps keep r
 | 2. Logic | Move and merge the pure logic and tests; the routine model with both schedule engines; paise; one date module | All moved tests pass, plus new routine tests |
 | 3. Data | Tables, upgrades, store, backup/export/import | Export → import round trip is identical |
 | 4. Today + routines + notifications | Today list, shared row and editor, Setup › Routines, capacity warning and move, `planNotifications`, morning/evening/weekly notifications with buttons | You can run your day from the app and its notifications |
-| 5. Money capture | Parser + test set, native reader, `incoming` queue, To-confirm rows, Splitwise/balance to-dos, quick add and paste, Accounts/Categories/Rules, one-tap rule suggestions, reader check | Parser meets the 95% target; a real bank message becomes an entry |
+| 5. Money capture | On-phone parser + test set, optional AI parsing (key setup, masking, fallback, test button), native reader, `incoming` queue, To-confirm rows, Splitwise/balance to-dos, quick add and paste, Accounts/Categories/Rules, one-tap rule suggestions, reader check | Parser meets the 95% target; a real bank message becomes an entry |
 | 6. Insights | Period control, Spending/Habits/Home sections, day view, all transactions | Totals match the old apps for the same months |
 | 7. Move data | Export script, import, totals check | Your real data is in and matches |
 | 8. Switch over | 1–2 weeks on the app alone, with backups on; then turn off MacroDroid, cron, Telegram and Vercel; delete `web/`; archive FinanceTracker; revoke the Google service accounts and the Groq / Telegram keys | Nothing old left running, no secrets anywhere |
@@ -415,7 +465,9 @@ Each phase is one pull request, merged when its checks pass. The old apps keep r
 
 | Risk | Handling |
 |---|---|
-| The on-phone parser is less accurate than the AI | 95% target on your own messages before switching over; unsure entries go to To confirm; one-tap rules; AI can be added later |
+| The on-phone parser is less accurate than AI | Add your key and AI does the reading; without one, the 95% target on your own messages applies, unsure entries go to To confirm, and one-tap rules help |
+| The AI provider is down or the key expires | The on-phone rules take over automatically; Setup shows "AI failing: check key" |
+| Message text sent to the AI provider | Only when you add a key; OTP, spam and reminders are never sent; numbers and ids are masked |
 | Android stops the reader to save battery | Battery exemption asked once; the reader check notification; a red banner in Setup |
 | Notification content is out of date | Re-planned after every change and every open; buttons cancel the notification they answer |
 | A lost phone | Weekly backup file plus export; import tested in CI |
