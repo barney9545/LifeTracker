@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { getRepository } from "@/lib/repository";
 import { getSession } from "@/lib/auth";
 import { dateSchema } from "@/lib/validation";
@@ -9,7 +9,7 @@ import { istToday } from "@/lib/core/logic";
 import { CHORE_LOG_DAYS, applyMove, isScheduledOn, missedMarkDate } from "@/lib/chores/logic";
 import type { ChoreMove } from "@/lib/chores/types";
 import { z } from "zod";
-import { REPO_TAGS } from "@/lib/data";
+import { revalidateRepo } from "@/lib/data";
 import type { ActionResult } from "./items";
 
 async function guard() {
@@ -18,12 +18,9 @@ async function guard() {
 }
 
 function revalidateChores() {
-  // Same as revalidateAll in items.ts: expire the cached reads so the change
+  // Same as revalidateAll in items.ts: expire the cached snapshot so the change
   // shows on the very next render. Chores only appear on Home and Manage.
-  revalidateTag(REPO_TAGS.chores, { expire: 0 });
-  revalidateTag(REPO_TAGS.choreLogs, { expire: 0 });
-  revalidateTag(REPO_TAGS.choreMoves, { expire: 0 });
-  revalidateTag(REPO_TAGS.choreCapacity, { expire: 0 });
+  revalidateRepo();
   revalidatePath("/");
   revalidatePath("/manage");
 }

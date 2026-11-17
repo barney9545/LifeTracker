@@ -18,7 +18,7 @@ import { GoogleSpreadsheet, type GoogleSpreadsheetRow } from "google-spreadsheet
 import { JWT } from "google-auth-library";
 import type { AiSummary, Frequency, LogEntry, TimeOfDay, TrackableItem } from "../core/types";
 import { daysAgoISO, istStamp, istToday, todayISO } from "../core/logic";
-import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
+import type { ItemPatch, NewItem, NewLog, RepoSnapshot, TrackerRepository } from "./types";
 import type {
   Chore, ChoreMove, ChorePatch, ChoreWeek, MonthWeek, NewChore, NewChoreLog, StoredChoreMove, Weekday,
 } from "../chores/types";
@@ -31,6 +31,27 @@ const CHORE_HEADERS = [
 const CHORE_MOVE_HEADERS = ["chore_id", "from_date", "to_date"];
 const CHORE_LOG_HEADERS = ["id", "date", "chore_id", "chore_name", "done", "notes"];
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** Every tab the snapshot reads, in one batched request. */
+const SNAPSHOT_TABS = ["supplements", "log", "ai_summary", "settings", "chores", "chore_log", "chore_moves"] as const;
+type SnapshotTab = (typeof SNAPSHOT_TABS)[number];
+
+/** What the row mappers need: a header-keyed getter (a GoogleSpreadsheetRow fits too). */
+interface Row { get(key: string): unknown }
+
+/** A values-API grid (header row first) → header-keyed rows, skipping blank rows. */
+function toRows(values: unknown[][] | undefined): Row[] {
+  if (!values?.length) return [];
+  const index = new Map<string, number>();
+  values[0].forEach((h, i) => {
+    const k = String(h ?? "").trim();
+    if (k && !index.has(k)) index.set(k, i);
+  });
+  return values
+    .slice(1)
+    .filter((r) => r.some((c) => String(c ?? "").trim() !== ""))
+    .map((r) => ({ get: (k: string) => { const i = index.get(k); return i === undefined ? undefined : r[i]; } }));
+}
 
 /** "Mon,Thu" (or "1,4") → [1, 4]; Mon–Sun, ascending, de-duplicated. */
 function parseDays(v: unknown): Weekday[] {
@@ -67,7 +88,7 @@ function formatMonthWeek(w: MonthWeek): string {
   return w === -1 ? "last" : String(w);
 }
 
-function rowToChore(r: GoogleSpreadsheetRow): Chore {
+function rowToChore(r: Row): Chore {
   const freq = String(r.get("frequency") ?? "").trim().toLowerCase();
   return {
     id: String(r.get("id") ?? ""),
@@ -85,7 +106,7 @@ function rowToChore(r: GoogleSpreadsheetRow): Chore {
   };
 }
 
-function rowToChoreLog(r: GoogleSpreadsheetRow): LogEntry {
+function rowToChoreLog(r: Row): LogEntry {
   return {
     id: String(r.get("id") ?? ""),
     itemId: String(r.get("chore_id") ?? ""),
@@ -99,7 +120,13 @@ function rowToChoreLog(r: GoogleSpreadsheetRow): LogEntry {
 
 const SCOPES = ["https://www.googleapis.com/auth/spreadsheets"];
 
-function getDoc(): GoogleSpreadsheet {
+/** HTTP 400 from the Sheets API (e.g. a range naming a tab that doesn't exist). */
+function isBadRequest(e: unknown): boolean {
+  const err = e as { status?: number; code?: number | string; response?: { status?: number } };
+  return err?.response?.status === 400 || err?.status === 400 || String(err?.code) === "400";
+}
+
+function getClient(): { doc: GoogleSpreadsheet; jwt: JWT; sheetId: string } {
   const sheetId = process.env.SHEET_ID;
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   if (!sheetId) throw new Error("SHEET_ID env var is missing");
@@ -111,7 +138,7 @@ function getDoc(): GoogleSpreadsheet {
     key: creds.private_key.replace(/\\n/g, "\n"),
     scopes: SCOPES,
   });
-  return new GoogleSpreadsheet(sheetId, jwt);
+  return { doc: new GoogleSpreadsheet(sheetId, jwt), jwt, sheetId };
 }
 
 function bool(v: unknown): boolean {
@@ -125,7 +152,7 @@ function normDate(v: unknown): string {
   return isNaN(d.getTime()) ? s : todayISO(d);
 }
 
-function rowToItem(r: GoogleSpreadsheetRow): TrackableItem {
+function rowToItem(r: Row): TrackableItem {
   return {
     id: String(r.get("id") ?? ""),
     name: String(r.get("name") ?? ""),
@@ -146,7 +173,7 @@ function rowToItem(r: GoogleSpreadsheetRow): TrackableItem {
   };
 }
 
-function rowToLog(r: GoogleSpreadsheetRow): LogEntry {
+function rowToLog(r: Row): LogEntry {
   return {
     id: String(r.get("id") ?? ""),
     itemId: String(r.get("supplement_id") ?? ""),
@@ -167,15 +194,101 @@ function nextId(rows: GoogleSpreadsheetRow[]): string {
   return String(max + 1);
 }
 
+function rowToChoreMove(r: Row): StoredChoreMove {
+  return {
+    choreId: String(r.get("chore_id") ?? ""),
+    fromDate: normDate(r.get("from_date")),
+    toDate: normDate(r.get("to_date")),
+  };
+}
+
+const isISODate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+/** One parsed snapshot from the raw tab grids (a missing tab reads as empty). */
+function buildSnapshot(grids: Partial<Record<SnapshotTab, unknown[][]>>): RepoSnapshot {
+  const ai = toRows(grids.ai_summary);
+  const last = ai[ai.length - 1];
+  const settings: Record<string, string> = {};
+  for (const r of toRows(grids.settings)) {
+    const k = String(r.get("key") ?? "").trim();
+    if (k) settings[k] = String(r.get("value") ?? "");
+  }
+  return {
+    items: toRows(grids.supplements).map(rowToItem),
+    logs: toRows(grids.log).map(rowToLog),
+    aiSummary: last
+      ? { short: String(last.get("short") ?? ""), long: String(last.get("long") ?? ""), updatedAt: String(last.get("updated_at") ?? "") }
+      : null,
+    settings,
+    chores: toRows(grids.chores).map(rowToChore).filter((c) => c.id && c.name),
+    choreLogs: toRows(grids.chore_log).map(rowToChoreLog),
+    choreMoves: toRows(grids.chore_moves).map(rowToChoreMove)
+      .filter((m) => m.choreId && isISODate(m.fromDate) && isISODate(m.toDate)),
+  };
+}
+
+/**
+ * Read quota notes (Sheets allows ~60 read requests / minute):
+ *  - Every getter is served from ONE `values:batchGet` request covering all tabs;
+ *    concurrent getters (e.g. Promise.all of items + logs) share that request.
+ *  - The spreadsheet metadata (`loadInfo`) is only loaded for writes, or once if a
+ *    tab is missing, never on the plain read path.
+ *  - Header checks for older sheets run once per server instance, not per write.
+ */
 export class SheetsRepository implements TrackerRepository {
+  private client = getClient();
   private docPromise: Promise<GoogleSpreadsheet> | null = null;
+  /** In-flight snapshot read, shared by concurrent callers (cleared once settled). */
+  private inflight: Promise<RepoSnapshot> | null = null;
+  /** Tabs known to exist after a fallback metadata load; null = assume all exist. */
+  private presentTabs: SnapshotTab[] | null = null;
+  /** `${tab}:${header}` columns already verified/added on this instance. */
+  private ensuredColumns = new Set<string>();
 
   private async doc(): Promise<GoogleSpreadsheet> {
     if (!this.docPromise) {
-      const d = getDoc();
-      this.docPromise = d.loadInfo().then(() => d);
+      const d = this.client.doc;
+      this.docPromise = d.loadInfo().then(() => d).catch((e) => {
+        this.docPromise = null; // let the next call retry
+        throw e;
+      });
     }
     return this.docPromise;
+  }
+
+  getSnapshot(): Promise<RepoSnapshot> {
+    if (!this.inflight) {
+      this.inflight = this.fetchSnapshot().finally(() => { this.inflight = null; });
+    }
+    return this.inflight;
+  }
+
+  private async fetchSnapshot(): Promise<RepoSnapshot> {
+    try {
+      return buildSnapshot(await this.batchGet(this.presentTabs ?? [...SNAPSHOT_TABS]));
+    } catch (e) {
+      // A 400 means a range didn't parse — i.e. a tab doesn't exist yet. Create the
+      // ones the app owns (chores tabs, settings), then read whatever exists.
+      if (!isBadRequest(e) || this.presentTabs) throw e;
+      await this.ensureChoreTabs();
+      await this.settingsTab();
+      const doc = await this.doc();
+      this.presentTabs = SNAPSHOT_TABS.filter((t) => doc.sheetsByTitle[t]);
+      return buildSnapshot(await this.batchGet(this.presentTabs));
+    }
+  }
+
+  /** One `values:batchGet` request for the given tabs (formatted values, like getRows). */
+  private async batchGet(tabs: readonly SnapshotTab[]): Promise<Partial<Record<SnapshotTab, unknown[][]>>> {
+    if (!tabs.length) return {};
+    const params = new URLSearchParams({ valueRenderOption: "FORMATTED_VALUE", majorDimension: "ROWS" });
+    for (const t of tabs) params.append("ranges", `'${t}'`);
+    const res = await this.client.jwt.request<{ valueRanges?: { values?: unknown[][] }[] }>({
+      url: `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(this.client.sheetId)}/values:batchGet?${params}`,
+    });
+    const out: Partial<Record<SnapshotTab, unknown[][]>> = {};
+    tabs.forEach((t, i) => { out[t] = res.data.valueRanges?.[i]?.values ?? []; });
+    return out;
   }
 
   private async tab(title: string) {
@@ -185,46 +298,48 @@ export class SheetsRepository implements TrackerRepository {
     return sheet;
   }
 
-  /** Add a header column to a sheet if it's not already present (one-time). */
+  /**
+   * Add a header column to a sheet if it's not already present. Checked once per
+   * server instance (it costs a read), not on every write.
+   */
   private async ensureColumn(
     sheet: Awaited<ReturnType<SheetsRepository["tab"]>>,
     header: string,
   ): Promise<void> {
+    const key = `${sheet.title}:${header}`;
+    if (this.ensuredColumns.has(key)) return;
+    let headers: string[] | undefined;
     try {
-      await sheet.loadHeaderRow();
+      headers = sheet.headerValues; // throws until the header row is loaded
     } catch {
-      /* sheet may be empty; nothing to do */
+      /* not loaded yet */
     }
-    const headers = sheet.headerValues ?? [];
+    if (!headers) {
+      try {
+        await sheet.loadHeaderRow();
+        headers = sheet.headerValues;
+      } catch {
+        /* sheet may be empty; nothing to do */
+      }
+    }
+    headers ??= [];
     if (!headers.includes(header)) {
       await sheet.setHeaderRow([...headers, header]);
     }
+    this.ensuredColumns.add(key);
   }
 
   async getItems(): Promise<TrackableItem[]> {
-    const rows = await (await this.tab("supplements")).getRows();
-    return rows.map(rowToItem);
+    return (await this.getSnapshot()).items;
   }
 
   async getLogs(days: number): Promise<LogEntry[]> {
-    const rows = await (await this.tab("log")).getRows();
     const cutoff = daysAgoISO(days);
-    return rows.map(rowToLog).filter((l) => l.date >= cutoff);
+    return (await this.getSnapshot()).logs.filter((l) => l.date >= cutoff);
   }
 
   async getAiSummary(): Promise<AiSummary | null> {
-    try {
-      const rows = await (await this.tab("ai_summary")).getRows();
-      if (rows.length === 0) return null;
-      const r = rows[rows.length - 1];
-      return {
-        short: String(r.get("short") ?? ""),
-        long: String(r.get("long") ?? ""),
-        updatedAt: String(r.get("updated_at") ?? ""),
-      };
-    } catch {
-      return null;
-    }
+    return (await this.getSnapshot()).aiSummary;
   }
 
   async saveAiSummary(summary: { short: string; long: string }): Promise<void> {
@@ -391,13 +506,7 @@ export class SheetsRepository implements TrackerRepository {
 
   async getSettings(): Promise<Record<string, string>> {
     try {
-      const rows = await (await this.settingsTab()).getRows();
-      const out: Record<string, string> = {};
-      for (const r of rows) {
-        const k = String(r.get("key") ?? "").trim();
-        if (k) out[k] = String(r.get("value") ?? "");
-      }
-      return out;
+      return (await this.getSnapshot()).settings;
     } catch {
       return {};
     }
@@ -460,16 +569,12 @@ export class SheetsRepository implements TrackerRepository {
   }
 
   async getChores(): Promise<Chore[]> {
-    await this.ensureChoreTabs();
-    const rows = await (await this.tab("chores")).getRows();
-    return rows.map(rowToChore).filter((c) => c.id && c.name);
+    return (await this.getSnapshot()).chores;
   }
 
   async getChoreLogs(days: number): Promise<LogEntry[]> {
-    await this.ensureChoreTabs();
-    const rows = await (await this.tab("chore_log")).getRows();
     const cutoff = daysAgoISO(days);
-    return rows.map(rowToChoreLog).filter((l) => l.date >= cutoff);
+    return (await this.getSnapshot()).choreLogs.filter((l) => l.date >= cutoff);
   }
 
   async addChore(chore: NewChore): Promise<Chore> {
@@ -542,15 +647,7 @@ export class SheetsRepository implements TrackerRepository {
   }
 
   async getChoreMoves(): Promise<StoredChoreMove[]> {
-    await this.ensureChoreTabs();
-    const rows = await (await this.tab("chore_moves")).getRows();
-    return rows
-      .map((r) => ({
-        choreId: String(r.get("chore_id") ?? ""),
-        fromDate: normDate(r.get("from_date")),
-        toDate: normDate(r.get("to_date")),
-      }))
-      .filter((m) => m.choreId && /^\d{4}-\d{2}-\d{2}$/.test(m.fromDate) && /^\d{4}-\d{2}-\d{2}$/.test(m.toDate));
+    return (await this.getSnapshot()).choreMoves;
   }
 
   async setChoreMoves(choreId: string, moves: ChoreMove[]): Promise<void> {

@@ -1,5 +1,4 @@
-import { getChoreCapacity, getChoreLogs, getChoreMoves, getChores, getItems } from "@/lib/data";
-import { getRepository } from "@/lib/repository";
+import { getChoreCapacity, getChoreLogs, getChoreMoves, getChores, getItems, getSettings } from "@/lib/data";
 import { DEFAULT_GUIDANCE, DEFAULT_TEMPERATURE } from "@/lib/summary";
 import { supplementsTracker as T } from "@/lib/trackers/supplements";
 import { daysBetween, istToday } from "@/lib/core/logic";
@@ -47,7 +46,7 @@ export default async function ManagePage({
   const logDays = Math.max(CHORE_LOG_DAYS, daysBetween(today, `${month}-01`) + 1);
 
   const [items, settings, chores, choreLogs, choreMoves, capacity] = await Promise.all([
-    getItems(), getRepository().getSettings(), getChores(),
+    getItems(), getSettings(), getChores(),
     getChoreLogs(logDays), getChoreMoves(), getChoreCapacity(),
   ]);
   const activeItems = items.filter((i) => i.active);

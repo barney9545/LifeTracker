@@ -23,7 +23,26 @@ export interface NewLog {
   date?: string;
 }
 
+/**
+ * Everything the app reads, fetched in one go. The Sheets repository builds it
+ * from a single batched API read (instead of one read per tab per getter), and
+ * the cached read layer (lib/data.ts) caches just this one object.
+ */
+export interface RepoSnapshot {
+  items: TrackableItem[];
+  /** Every supplement log row (callers filter by date). */
+  logs: LogEntry[];
+  aiSummary: AiSummary | null;
+  settings: Record<string, string>;
+  chores: Chore[];
+  /** Every chore log row (callers filter by date). */
+  choreLogs: LogEntry[];
+  choreMoves: StoredChoreMove[];
+}
+
 export interface TrackerRepository {
+  /** All readable data in one call (one API read for Sheets). */
+  getSnapshot(): Promise<RepoSnapshot>;
   /** All items (active and paused). */
   getItems(): Promise<TrackableItem[]>;
   /** Log entries within the last `days` days. */

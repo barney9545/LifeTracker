@@ -1,62 +1,60 @@
 import "server-only";
-import { unstable_cache } from "next/cache";
+import { cache } from "react";
+import { revalidateTag, unstable_cache } from "next/cache";
 import { getRepository } from "./repository";
 import { DEFAULT_CAPACITY } from "./chores/logic";
+import { daysAgoISO } from "./core/logic";
+import type { LogEntry } from "./core/types";
 
 /**
- * Cached read layer over the repository. Cross-navigation reads are served from
- * cache (~fast); mutations call `revalidateTag` (see actions/items.ts) so the
- * user's own changes appear immediately. A *direct* Google Sheet edit can take
- * up to `revalidate` seconds to surface.
+ * Cached read layer over the repository.
+ *
+ * Google Sheets limits read requests per minute, so everything the app reads
+ * comes from ONE cached snapshot (one batched API read for all tabs), and every
+ * getter below derives from it — no matter how many getters a page calls, or
+ * how many different `days` windows they ask for.
+ *
+ * Mutations call `revalidateRepo()` so the user's own changes appear on the very
+ * next render (costing one read). A *direct* Google Sheet edit can take up to
+ * `revalidate` seconds to surface.
  */
-export const REPO_TAGS = {
-  items: "repo:items", logs: "repo:logs", ai: "repo:ai",
-  chores: "repo:chores", choreLogs: "repo:chore-logs", choreMoves: "repo:chore-moves",
-  choreCapacity: "repo:chore-capacity",
-} as const;
+export const REPO_TAG = "repo:snapshot";
 
-export const getItems = unstable_cache(
-  () => getRepository().getItems(),
-  ["repo-items"],
-  { tags: [REPO_TAGS.items], revalidate: 30 },
+const cachedSnapshot = unstable_cache(
+  () => getRepository().getSnapshot(),
+  ["repo-snapshot-v1"],
+  { tags: [REPO_TAG], revalidate: 60 },
 );
 
-export const getLogs = unstable_cache(
-  (days: number) => getRepository().getLogs(days),
-  ["repo-logs"],
-  { tags: [REPO_TAGS.logs], revalidate: 30 },
-);
+/** Per-request dedupe on top of the cross-request cache. */
+const getSnapshot = cache(() => cachedSnapshot());
 
-export const getAiSummary = unstable_cache(
-  () => getRepository().getAiSummary(),
-  ["repo-ai"],
-  { tags: [REPO_TAGS.ai], revalidate: 60 },
-);
+/** Expire the cached snapshot (call after any write). */
+export function revalidateRepo() {
+  revalidateTag(REPO_TAG, { expire: 0 });
+}
 
-export const getChores = unstable_cache(
-  () => getRepository().getChores(),
-  ["repo-chores"],
-  { tags: [REPO_TAGS.chores], revalidate: 30 },
-);
+const since = (logs: LogEntry[], days: number) => {
+  const cutoff = daysAgoISO(days);
+  return logs.filter((l) => l.date >= cutoff);
+};
 
-export const getChoreLogs = unstable_cache(
-  (days: number) => getRepository().getChoreLogs(days),
-  ["repo-chore-logs"],
-  { tags: [REPO_TAGS.choreLogs], revalidate: 30 },
-);
+export const getItems = async () => (await getSnapshot()).items;
 
-export const getChoreMoves = unstable_cache(
-  () => getRepository().getChoreMoves(),
-  ["repo-chore-moves"],
-  { tags: [REPO_TAGS.choreMoves], revalidate: 30 },
-);
+export const getLogs = async (days: number) => since((await getSnapshot()).logs, days);
+
+export const getAiSummary = async () => (await getSnapshot()).aiSummary;
+
+export const getSettings = async () => (await getSnapshot()).settings;
+
+export const getChores = async () => (await getSnapshot()).chores;
+
+export const getChoreLogs = async (days: number) => since((await getSnapshot()).choreLogs, days);
+
+export const getChoreMoves = async () => (await getSnapshot()).choreMoves;
 
 /** Daily chore capacity (settings key `chore_capacity`), default 100. */
-export const getChoreCapacity = unstable_cache(
-  async () => {
-    const n = Number((await getRepository().getSettings())["chore_capacity"]);
-    return Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_CAPACITY;
-  },
-  ["repo-chore-capacity"],
-  { tags: [REPO_TAGS.choreCapacity], revalidate: 60 },
-);
+export async function getChoreCapacity(): Promise<number> {
+  const n = Number((await getSettings())["chore_capacity"]);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : DEFAULT_CAPACITY;
+}
