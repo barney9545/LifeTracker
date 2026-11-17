@@ -5,9 +5,10 @@
  */
 import type { AiSummary, LogEntry, TrackableItem } from "../core/types";
 import { daysAgoISO, istStamp, istToday } from "../core/logic";
-import type { ItemPatch, NewItem, NewLog, TrackerRepository } from "./types";
+import type { ItemPatch, NewItem, NewLog, RepoSnapshot, TrackerRepository } from "./types";
 import type { Chore, ChoreMove, ChorePatch, NewChore, NewChoreLog, StoredChoreMove } from "../chores/types";
 import { SEED_CHORES } from "../chores/seed";
+import { MISSED_NOTE } from "../chores/logic";
 
 function seedItems(): TrackableItem[] {
   return [
@@ -57,6 +58,16 @@ export class MemoryRepository implements TrackerRepository {
   private logs = seedLogs();
   private chores = seedChores();
   private choreLogs = seedChoreLogs();
+
+  async getSnapshot(): Promise<RepoSnapshot> {
+    const [aiSummary, settings, choreMoves] = await Promise.all([
+      this.getAiSummary(), this.getSettings(), this.getChoreMoves(),
+    ]);
+    return structuredClone({
+      items: this.items, logs: this.logs, aiSummary, settings,
+      chores: this.chores, choreLogs: this.choreLogs, choreMoves,
+    });
+  }
   private choreMoves: StoredChoreMove[] = [];
   private summary: AiSummary = {
     short: "You're at a strong streak on Vitamin D3 — nice consistency. Magnesium pairs well with dinner tonight.",
@@ -167,7 +178,7 @@ export class MemoryRepository implements TrackerRepository {
     const date = /^\d{4}-\d{2}-\d{2}$/.test(entry.date ?? "") ? entry.date! : istToday();
     const created: LogEntry = {
       id: nextNumericId(this.choreLogs), itemId: entry.choreId, itemName: entry.choreName,
-      date, done: true, time: "", notes: "",
+      date, done: entry.done ?? true, time: "", notes: entry.done === false ? MISSED_NOTE : "",
     };
     this.choreLogs.push(created);
     return { ...created };

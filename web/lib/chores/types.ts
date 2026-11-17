@@ -46,6 +46,8 @@ export interface NewChoreLog {
   choreName: string;
   /** ISO date; defaults to IST today. */
   date?: string;
+  /** false records a "missed" mark (done=false, notes "missed") instead of a completion. Defaults to true. */
+  done?: boolean;
 }
 
 /**

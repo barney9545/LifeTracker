@@ -1,12 +1,11 @@
 import type { NextRequest } from "next/server";
-import { revalidateTag } from "next/cache";
 import { dueForSlot, reminderMessage, SLOTS, type Slot } from "@/lib/reminders";
 import { runDailyDigest } from "@/lib/summary";
 import { sendTelegram } from "@/lib/notify";
 import { istHour, istToday } from "@/lib/core/logic";
 import { runChoresReminder } from "@/lib/chores/nightly";
 import { applyScheduledResumes } from "@/lib/schedule";
-import { REPO_TAGS } from "@/lib/data";
+import { revalidateRepo } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +43,7 @@ export async function GET(req: NextRequest) {
   let resumed: string[] = [];
   try {
     resumed = await applyScheduledResumes();
-    if (resumed.length) revalidateTag(REPO_TAGS.items, { expire: 0 });
+    if (resumed.length) revalidateRepo();
   } catch {
     /* non-fatal: don't block reminders/digest if this errors */
   }
@@ -52,7 +51,7 @@ export async function GET(req: NextRequest) {
   try {
     if (action === "summary") {
       const { short, items, debug } = await runDailyDigest();
-      revalidateTag(REPO_TAGS.ai, { expire: 0 }); // refresh the Today page insight
+      revalidateRepo(); // refresh the Today page insight
       return Response.json({ action, resumed, sent: items > 0, items, short, debug });
     }
 

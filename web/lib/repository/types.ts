@@ -23,7 +23,26 @@ export interface NewLog {
   date?: string;
 }
 
+/**
+ * Everything the app reads, fetched in one go. The Sheets repository builds it
+ * from a single batched API read (instead of one read per tab per getter), and
+ * the cached read layer (lib/data.ts) caches just this one object.
+ */
+export interface RepoSnapshot {
+  items: TrackableItem[];
+  /** Every supplement log row (callers filter by date). */
+  logs: LogEntry[];
+  aiSummary: AiSummary | null;
+  settings: Record<string, string>;
+  chores: Chore[];
+  /** Every chore log row (callers filter by date). */
+  choreLogs: LogEntry[];
+  choreMoves: StoredChoreMove[];
+}
+
 export interface TrackerRepository {
+  /** All readable data in one call (one API read for Sheets). */
+  getSnapshot(): Promise<RepoSnapshot>;
   /** All items (active and paused). */
   getItems(): Promise<TrackableItem[]>;
   /** Log entries within the last `days` days. */
@@ -71,9 +90,9 @@ export interface TrackerRepository {
   scheduleChoreResume(id: string, dateISO: string): Promise<void>;
   /** Removes the chore; its history rows are kept. */
   deleteChore(id: string): Promise<void>;
-  /** Record a completion (date defaults to IST today). */
+  /** Record a completion, or a missed occurrence with `done: false` (date defaults to IST today). */
   logChore(entry: NewChoreLog): Promise<LogEntry>;
-  /** Undo a completion. */
+  /** Undo a completion (or a missed mark). */
   deleteChoreLog(logId: string): Promise<void>;
   /** All one-off reschedules (`chore_moves` tab). */
   getChoreMoves(): Promise<StoredChoreMove[]>;

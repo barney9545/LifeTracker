@@ -1,11 +1,11 @@
 "use server";
 
-import { revalidatePath, revalidateTag } from "next/cache";
+import { revalidatePath } from "next/cache";
 import { getRepository } from "@/lib/repository";
 import { getSession } from "@/lib/auth";
 import { parseItemForm, timeSchema, dateSchema, type ItemInput } from "@/lib/validation";
 import { istNowHHMM, istToday } from "@/lib/core/logic";
-import { REPO_TAGS } from "@/lib/data";
+import { revalidateRepo } from "@/lib/data";
 import { previewDigest } from "@/lib/summary";
 import { z } from "zod";
 
@@ -17,11 +17,9 @@ async function guard() {
 }
 
 function revalidateAll() {
-  // Expire the cached read layer immediately so the user's own change is fresh
-  // on the very next render (passive navigation still uses the 30s cache).
-  revalidateTag(REPO_TAGS.items, { expire: 0 });
-  revalidateTag(REPO_TAGS.logs, { expire: 0 });
-  revalidateTag(REPO_TAGS.ai, { expire: 0 });
+  // Expire the cached snapshot so the user's own change is fresh on the very
+  // next render (one Sheets read; passive navigation uses the 60s cache).
+  revalidateRepo();
   revalidatePath("/");
   revalidatePath("/manage");
   revalidatePath("/trends");

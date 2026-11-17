@@ -12,6 +12,9 @@
  *  - A scheduled day with no completion on/after it stays "outstanding" until the
  *    chore is marked done; one completion clears every outstanding occurrence up
  *    to that day (a missed Monday + Thursday laundry shows once, overdue since Mon).
+ *  - Marking an overdue chore "missed" logs a done=false entry (notes "missed") on
+ *    its latest missed day: it clears those occurrences like a completion would (they stop being
+ *    overdue) but never counts as done (no Done-today, no completed load).
  *  - A completion never counts toward a later scheduled day (no doing it early).
  *  - Nothing before the chore's schedule start (added / resumed) is ever overdue.
  *  - One-off moves (`ChoreMove`) shift a single occurrence to another date without
@@ -121,11 +124,21 @@ export function isDueOn(chore: Chore, iso: string, moves: StoredChoreMove[] = []
   return isActiveOn(chore, iso) && iso >= scheduleStart(chore) && occursOn(chore, iso, moves);
 }
 
-/** Latest done date for this chore on or before `asOf`, or null. Matched by chore id. */
-function lastDoneOnOrBefore(chore: Chore, logs: LogEntry[], asOf: string): string | null {
+/** Notes value that marks a done=false chore log as a deliberate "missed" mark. */
+export const MISSED_NOTE = "missed";
+
+/** A "missed" mark: done=false and tagged. Other done=false rows (e.g. hand-edited) are ignored. */
+export const isMissedLog = (l: LogEntry) => !l.done && l.notes === MISSED_NOTE;
+
+/**
+ * Latest date on or before `asOf` that settled this chore's occurrences — a
+ * completion or a "missed" mark — or null. Matched by chore id.
+ */
+function lastSettledOnOrBefore(chore: Chore, logs: LogEntry[], asOf: string): string | null {
   let max: string | null = null;
   for (const l of logs) {
-    if (l.itemId === chore.id && l.done && l.date <= asOf && (max === null || l.date > max)) max = l.date;
+    if (l.itemId !== chore.id || !(l.done || isMissedLog(l))) continue;
+    if (l.date <= asOf && (max === null || l.date > max)) max = l.date;
   }
   return max;
 }
@@ -138,9 +151,9 @@ export function outstandingDates(
   chore: Chore, logs: LogEntry[], asOf: string, moves: StoredChoreMove[] = [],
 ): string[] {
   if (!isActiveOn(chore, asOf)) return [];
-  const lastDone = lastDoneOnOrBefore(chore, logs, asOf);
+  const settled = lastSettledOnOrBefore(chore, logs, asOf);
   let from = scheduleStart(chore);
-  if (lastDone && addDaysISO(lastDone, 1) > from) from = addDaysISO(lastDone, 1);
+  if (settled && addDaysISO(settled, 1) > from) from = addDaysISO(settled, 1);
   const floor = addDaysISO(asOf, -CHORE_LOG_DAYS);
   if (from < floor) from = floor;
   const out: string[] = [];
@@ -148,6 +161,18 @@ export function outstandingDates(
     if (occursOn(chore, d, moves)) out.push(d);
   }
   return out;
+}
+
+/**
+ * The date to log a "missed" mark on for an overdue chore: its latest outstanding
+ * day before `today`, so every missed day is cleared but today's occurrence (if
+ * any) stays due. Null when nothing before today is outstanding.
+ */
+export function missedMarkDate(
+  chore: Chore, logs: LogEntry[], today: string, moves: StoredChoreMove[] = [],
+): string | null {
+  const past = outstandingDates(chore, logs, today, moves).filter((d) => d < today);
+  return past[past.length - 1] ?? null;
 }
 
 /**
