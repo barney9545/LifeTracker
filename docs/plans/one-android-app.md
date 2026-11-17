@@ -35,12 +35,12 @@ My recommendation is listed first. The plan assumes these recommendations.
 | # | Question | Recommended | Alternative |
 |---|---|---|---|
 | ✅ 1 | **How bank messages are read** | **Decided:** rules on the phone by default; **optional AI parsing with your own API key** (see §5a). | — |
-| 2 | **Google Sheets editing goes away** | Edit in the app; export CSV or JSON any time | Two-way Sheets sync: brings back most of the complexity |
-| 3 | **Backups** | Weekly automatic backup file to a folder you pick, plus "Back up now". Android cloud backup off | Android cloud backup to Google Drive |
-| 4 | **Notification budget** | Morning and evening by default, afternoon optional, Sunday weekly look-back on. New-transaction alerts off (they come in the evening wrap-up) | Turn any on or off in Setup |
-| 5 | **How you install it** | Sideload the APK from GitHub Releases | Play Store: restricts apps that read notifications/SMS, and slow reviews |
-| 6 | **Where the code lives** | New `app/` folder in the LifeTracker repo; `web/` deleted and FinanceTracker archived after the switch | A new repo you create |
-| 7 | **Name** | "LifeTracker" | Your pick |
+| ✅ 2 | **Google Sheets editing goes away** | **Decided:** Edit in the app; export CSV or JSON any time | — |
+| ✅ 3 | **Backups** | **Decided:** Weekly automatic backup file to a folder you pick, plus "Back up now". Android cloud backup off | — |
+| ✅ 4 | **Notification budget** | **Decided:** Morning and evening by default, afternoon optional, Sunday weekly look-back on. New-transaction alerts off (they come in the evening wrap-up) | — |
+| ✅ 5 | **How you install it** | **Decided:** Sideload the APK from GitHub Releases | — |
+| ✅ 6 | **Where the code lives** | **Decided:** a new private repo (you create it; Claude gets access). After the switch, `web/` in LifeTracker is deleted and FinanceTracker is archived | — |
+| 7 | **Name** | **Sanjaya** (who saw the whole war and narrated it to the blind king, as this app sees your day and reports it) or **Vidura** (the wise steward of the household) | Chitragupta, Hestia, Mimir |
 
 ---
 
